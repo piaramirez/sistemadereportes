@@ -82,4 +82,33 @@ docker compose down
 docker compose logs
 
 # Usar el nombre correcto del contenedor
+
 docker exec -i sistemsync_postgres psql -U postgres -d edusync < schema.sql
+
+# Ver tablas
+
+docker exec -it sistemsync_postgres psql -U postgres -d edusync -c "\dt"
+
+# Ver usuarios
+
+docker exec -it sistemsync_postgres psql -U postgres -d edusync -c "SELECT \* FROM users;"
+
+# Ver reportes
+
+docker exec -it sistemsync_postgres psql -U postgres -d edusync -c "SELECT \* FROM reports;"
+
+# Entrar a PostgreSQL
+
+docker exec -it sistemsync_postgres psql -U postgres -d edusync
+
+cd ~/Documentos/sistemadereportes/backend
+source venv/bin/activate
+uvicorn app.main:app --reload --port 8000
+cd ~/Documentos/sistemadereportes/frontend
+npm run dev
+
+admin@edusync.com / admin123
+
+inspector@edusync.com / admin123
+
+tecnico@edusync.com / admin123
