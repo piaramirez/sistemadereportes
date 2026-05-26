@@ -74,3 +74,12 @@ ACCESS_TOKEN_EXPIRE_MINUTES=30
 
 EMAIL_API_KEY="tu-api-key"
 EMAIL_FROM="noreply@edusync.com"
+
+# Los comandos serían:
+
+docker compose up -d
+docker compose down
+docker compose logs
+
+# Usar el nombre correcto del contenedor
+docker exec -i sistemsync_postgres psql -U postgres -d edusync < schema.sql
