@@ -7,17 +7,20 @@ import axios from "axios";
 export default function DashboardPage() {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  // Estados necesarios para que las tablas y tarjetas no tiren error de "undefined"
   const [stats, setStats] = useState<any>({
     total_reports: 0,
     pending: 0,
     completed_last_7_days: 0,
   });
   const [reports, setReports] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
 
   const API_URL = "http://localhost:8000";
 
   useEffect(() => {
+    // Cargar los iconos de Google de forma dinámica
     const link = document.createElement("link");
     link.href =
       "https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap";
@@ -27,13 +30,16 @@ export default function DashboardPage() {
     const token = localStorage.getItem("token");
     const userData = localStorage.getItem("user");
 
+    // Si no existen credenciales, directo al login
     if (!token || !userData) {
-      router.push("/login");
+      router.replace("/login");
       return;
     }
 
+    // Parseamos el usuario real
     setUser(JSON.parse(userData));
 
+    // Consumir los datos del backend dockerizado de FastAPI
     const fetchData = async () => {
       try {
         const headers = { Authorization: `Bearer ${token}` };
@@ -49,9 +55,9 @@ export default function DashboardPage() {
         if (statsRes.data) setStats(statsRes.data);
         if (reportsRes.data) setReports(reportsRes.data);
       } catch (error) {
-        console.error("Error al obtener los datos:", error);
+        console.error("Error al obtener los datos del Dashboard:", error);
       } finally {
-        setLoading(false);
+        setLoading(false); // Apagamos el cargador inmediatamente al terminar las peticiones
       }
     };
 
@@ -61,26 +67,28 @@ export default function DashboardPage() {
   const handleLogout = () => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
-    router.push("/login");
+    window.location.href = "/login";
   };
 
+  // 1. PANTALLA DE CARGA: Se ejecuta de forma limpia mientras loading sea true
   if (loading || !user) {
     return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center">
-        <div className="w-10 h-10 border-4 border-[#002B7A] border-t-transparent rounded-full animate-spin"></div>
-        <p className="mt-4 text-sm font-semibold text-[#002B7A]">
+      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center text-white font-sans gap-4">
+        <div className="w-12 h-12 border-4 border-[#CDB170] border-t-transparent rounded-full animate-spin"></div>
+        <p className="text-sm font-bold tracking-wider animate-pulse text-slate-300">
           Verificando credenciales UNAM...
         </p>
       </div>
     );
   }
 
-  // REGLAS UNAM EN MINÚSCULAS BASADAS EN TU SCHEMA
+  // 2. REGLAS UNAM EN MINÚSCULAS (Se ejecutan solo cuando ya tenemos al usuario cargado)
   const userRole = user.role ? user.role.toLowerCase() : "";
   const isAdmin = userRole === "admin";
   const isEncargado = userRole === "coordinator";
   const isEmpleado = userRole === "technician" || userRole === "inspector";
 
+  // 3. RENDERIZADO DEL DASHBOARD COMPLETO
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50 font-sans">
       {/* SIDEBAR */}
@@ -147,7 +155,7 @@ export default function DashboardPage() {
         </div>
       </aside>
 
-      {/* CONTENIDO */}
+      {/* CONTENIDO PRINCIPAL */}
       <main className="flex-1 overflow-y-auto flex flex-col">
         <header className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-slate-200 px-8 py-4 flex items-center justify-between">
           <div>
@@ -166,12 +174,13 @@ export default function DashboardPage() {
               </p>
             </div>
             <div className="w-10 h-10 rounded-full bg-[#002B7A] text-white font-bold flex items-center justify-center text-sm border-2 border-[#CDB170]">
-              {user.initials}
+              {user.initials || "U"}
             </div>
           </div>
         </header>
 
         <div className="p-8 space-y-8 flex-1">
+          {/* TARJETAS DE INDICADORES */}
           {!isEmpleado && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
@@ -202,6 +211,7 @@ export default function DashboardPage() {
             </div>
           )}
 
+          {/* TABLA DE INCIDENCIAS */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
             <div className="p-5 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-50/50">
               <h3 className="font-bold text-slate-800 text-lg">
@@ -258,35 +268,77 @@ export default function DashboardPage() {
                           {report.report_number || `#${report.id}`}
                         </td>
                         <td className="px-6 py-4 text-sm text-slate-700">
-                          <strong>{report.location}</strong>{" "}
+                          <strong>
+                            {report.location?.name ||
+                              report.location ||
+                              "Salón sin asignar"}
+                          </strong>{" "}
                           <span className="text-xs text-slate-400">
-                            ({report.building})
+                            (
+                            {report.location?.building?.name ||
+                              report.building ||
+                              "FES Aragón"}
+                            )
                           </span>
                         </td>
                         <td className="px-6 py-4">
-                          <span className="text-xs font-bold uppercase">
+                          <span
+                            className={`text-xs font-bold uppercase px-2 py-1 rounded-full ${
+                              report.status === "pending"
+                                ? "bg-amber-50 text-amber-700 border border-amber-200"
+                                : report.status === "completed"
+                                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                  : "bg-slate-100 text-slate-600"
+                            }`}
+                          >
                             {report.status}
                           </span>
                         </td>
+
                         {isAdmin && (
                           <td className="px-6 py-4 text-xs font-semibold text-purple-700">
                             ✨ Seguimiento activo
                           </td>
                         )}
-                        <td className="px-6 py-4 text-right text-sm space-x-2">
-                          <button className="text-slate-400 hover:text-[#002B7A] p-1">
+
+                        <td className="px-6 py-4 text-right text-sm space-x-1 print:hidden">
+                          <button
+                            onClick={() =>
+                              router.push(`/dashboard/reports/${report.id}`)
+                            }
+                            className="text-slate-400 hover:text-[#002B7A] p-1.5 hover:bg-slate-100 rounded-lg transition-all"
+                            title="Ver detalle del reporte"
+                          >
                             <span className="material-symbols-outlined text-[18px]">
                               visibility
                             </span>
                           </button>
+
                           {(isAdmin || isEncargado) && (
                             <>
-                              <button className="text-amber-500 hover:text-amber-600 p-1">
+                              <button
+                                onClick={() =>
+                                  router.push(
+                                    `/dashboard/reports/${report.id}/edit`,
+                                  )
+                                }
+                                className="text-amber-500 hover:text-amber-600 p-1.5 hover:bg-amber-50 rounded-lg transition-all"
+                                title="Editar datos del reporte"
+                              >
                                 <span className="material-symbols-outlined text-[18px]">
                                   edit
                                 </span>
                               </button>
-                              <button className="text-blue-500 hover:text-blue-600 p-1">
+
+                              <button
+                                onClick={() =>
+                                  alert(
+                                    `Abriendo asignación rápida para el reporte #${report.id}`,
+                                  )
+                                }
+                                className="text-blue-500 hover:text-blue-600 p-1.5 hover:bg-blue-50 rounded-lg transition-all"
+                                title="Asignar técnico de mantenimiento"
+                              >
                                 <span className="material-symbols-outlined text-[18px]">
                                   assignment_turned_in
                                 </span>
