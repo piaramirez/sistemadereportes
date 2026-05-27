@@ -112,3 +112,7 @@ admin@edusync.com / admin123
 inspector@edusync.com / admin123
 
 tecnico@edusync.com / admin123
+
+docker compose logs backend -f
+
+docker compose up -d postgres

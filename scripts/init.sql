@@ -3,9 +3,7 @@
 -- Base de datos: PostgreSQL 16
 -- =====================================================
 
--- =====================================================
 -- 1. TABLA DE USUARIOS
--- =====================================================
 CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name VARCHAR(100) NOT NULL,
@@ -18,9 +16,7 @@ CREATE TABLE IF NOT EXISTS users (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- =====================================================
 -- 2. TABLA DE EDIFICIOS
--- =====================================================
 CREATE TABLE IF NOT EXISTS buildings (
     id SERIAL PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
@@ -28,9 +24,7 @@ CREATE TABLE IF NOT EXISTS buildings (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- =====================================================
 -- 3. TABLA DE UBICACIONES
--- =====================================================
 CREATE TABLE IF NOT EXISTS locations (
     id SERIAL PRIMARY KEY,
     building_id INTEGER REFERENCES buildings(id) ON DELETE CASCADE,
@@ -41,9 +35,7 @@ CREATE TABLE IF NOT EXISTS locations (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- =====================================================
 -- 4. TABLA DE REPORTES
--- =====================================================
 CREATE TABLE IF NOT EXISTS reports (
     id SERIAL PRIMARY KEY,
     report_number VARCHAR(20) UNIQUE NOT NULL,
@@ -57,9 +49,7 @@ CREATE TABLE IF NOT EXISTS reports (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- =====================================================
 -- 5. TABLA DE EVALUACIONES
--- =====================================================
 CREATE TABLE IF NOT EXISTS evaluations (
     id SERIAL PRIMARY KEY,
     report_id INTEGER REFERENCES reports(id) ON DELETE CASCADE,
@@ -68,9 +58,7 @@ CREATE TABLE IF NOT EXISTS evaluations (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- =====================================================
 -- 6. TABLA DE IMÁGENES
--- =====================================================
 CREATE TABLE IF NOT EXISTS images (
     id SERIAL PRIMARY KEY,
     report_id INTEGER REFERENCES reports(id) ON DELETE CASCADE,
@@ -79,9 +67,7 @@ CREATE TABLE IF NOT EXISTS images (
     uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- =====================================================
 -- 7. TABLA DE ASIGNACIONES
--- =====================================================
 CREATE TABLE IF NOT EXISTS assignments (
     id SERIAL PRIMARY KEY,
     report_id INTEGER REFERENCES reports(id) ON DELETE CASCADE,
@@ -93,9 +79,7 @@ CREATE TABLE IF NOT EXISTS assignments (
     status VARCHAR(20) DEFAULT 'assigned' CHECK (status IN ('assigned', 'accepted', 'in_progress', 'completed', 'rejected'))
 );
 
--- =====================================================
 -- 8. TABLA DE NOTIFICACIONES
--- =====================================================
 CREATE TABLE IF NOT EXISTS notifications (
     id SERIAL PRIMARY KEY,
     user_id UUID REFERENCES users(id) ON DELETE CASCADE,
@@ -106,9 +90,7 @@ CREATE TABLE IF NOT EXISTS notifications (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- =====================================================
 -- 9. TABLA DE HISTORIAL
--- =====================================================
 CREATE TABLE IF NOT EXISTS report_history (
     id SERIAL PRIMARY KEY,
     report_id INTEGER REFERENCES reports(id) ON DELETE CASCADE,
@@ -119,24 +101,18 @@ CREATE TABLE IF NOT EXISTS report_history (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- =====================================================
 -- ÍNDICES
--- =====================================================
 CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(status);
 CREATE INDEX IF NOT EXISTS idx_reports_report_date ON reports(report_date);
 CREATE INDEX IF NOT EXISTS idx_assignments_technician ON assignments(technician_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_user_read ON notifications(user_id, is_read);
 
--- =====================================================
--- DATOS DE PRUEBA
--- =====================================================
-
--- Usuarios
-INSERT INTO users (id, name, email, password_hash, role) VALUES
-    (gen_random_uuid(), 'Admin Principal', 'admin@edusync.com', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X4.VTtYrTeD4y6P2G', 'admin'),
-    (gen_random_uuid(), 'Juan Coordinador', 'coordinador@edusync.com', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X4.VTtYrTeD4y6P2G', 'coordinator'),
-    (gen_random_uuid(), 'Pedro Técnico', 'tecnico@edusync.com', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X4.VTtYrTeD4y6P2G', 'technician'),
-    (gen_random_uuid(), 'María Inspector', 'inspector@edusync.com', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X4.VTtYrTeD4y6P2G', 'inspector');
+-- DATOS DE PRUEBA (contraseña: admin123)
+INSERT INTO users (id, name, email, password_hash, role, created_at, updated_at) VALUES
+    (gen_random_uuid(), 'Admin Principal', 'admin@edusync.com', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X4.VTtYrTeD4y6P2G', 'admin', NOW(), NOW()),
+    (gen_random_uuid(), 'Juan Coordinador', 'coordinador@edusync.com', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X4.VTtYrTeD4y6P2G', 'coordinator', NOW(), NOW()),
+    (gen_random_uuid(), 'Pedro Técnico', 'tecnico@edusync.com', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X4.VTtYrTeD4y6P2G', 'technician', NOW(), NOW()),
+    (gen_random_uuid(), 'María Inspector', 'inspector@edusync.com', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X4.VTtYrTeD4y6P2G', 'inspector', NOW(), NOW());
 
 -- Edificios
 INSERT INTO buildings (name, description) VALUES
@@ -148,9 +124,11 @@ INSERT INTO buildings (name, description) VALUES
 INSERT INTO locations (building_id, name, location_type, floor, code) VALUES
     (1, 'Aula 101', 'classroom', 1, 'P-101'),
     (1, 'Aula 102', 'classroom', 1, 'P-102'),
-    (1, 'Baño Varones', 'bathroom', 1, 'P-BV1');
+    (1, 'Baño Varones', 'bathroom', 1, 'P-BV1'),
+    (2, 'Laboratorio Química', 'lab', 2, 'C-LAB01'),
+    (3, 'Sala de Lectura', 'common_area', 1, 'BIB-01');
 
--- Reportes
+-- Reportes de prueba
 INSERT INTO reports (report_number, reporter_id, location_id, report_date, inspection_date, comments, status) 
 SELECT 
     'R-' || LPAD(generate_series::TEXT, 5, '0'),
@@ -159,5 +137,5 @@ SELECT
     CURRENT_DATE,
     CURRENT_DATE,
     'Problemas de limpieza y mantenimiento encontrados.',
-    'pending'
-FROM generate_series(1, 5);
+    CASE WHEN generate_series % 2 = 0 THEN 'pending' ELSE 'completed' END
+FROM generate_series(1, 10);
