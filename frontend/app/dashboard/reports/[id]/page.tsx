@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, use } from "react"; // <-- Importamos use para desempaquetar params
+import { useEffect, useState, use } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import axios from "axios";
@@ -11,8 +11,6 @@ export default function ReportDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const router = useRouter();
-
-  // Desenvolvemos params de forma segura para Next.js 15
   const unwrappedParams = use(params);
   const id = unwrappedParams.id;
 
@@ -21,6 +19,7 @@ export default function ReportDetailPage({
   const [comments, setComments] = useState<any[]>([]);
   const [newComment, setNewComment] = useState("");
   const [loading, setLoading] = useState(true);
+  const [updatingStatus, setUpdatingStatus] = useState(false);
 
   const API_URL = "http://localhost:8000";
 
@@ -45,8 +44,6 @@ export default function ReportDetailPage({
       try {
         const headers = { Authorization: `Bearer ${token}` };
 
-        // 1. INTENTO DE CONEXIÓN REAL A TU FASTAPI:
-        // Cuando tengas los endpoints listos, esto jalará los datos vivos de Postgres
         const [reportRes, commentsRes] = await Promise.all([
           axios
             .get(`${API_URL}/api/reports/${id}`, { headers })
@@ -56,48 +53,30 @@ export default function ReportDetailPage({
             .catch(() => null),
         ]);
 
-        // 2. FALLBACK/SIMULACIÓN (Por si el backend aún no tiene el endpoint):
         if (reportRes && reportRes.data) {
           setReport(reportRes.data);
         } else {
-          // Datos espejo basados en tu init.sql para que no se quede vacío
           setReport({
             id: id,
             report_number: `R-${id.padStart(5, "0")}`,
             reporter_name: "Sarah Jenkins",
             date: "14 de Octubre, 2026",
-            location_type: "Aulas",
+            location_type: "classroom",
             location: "Salón 13",
             building: "Edificio A1",
             status: "pending",
             comments:
-              "Varios escritorios en la fila de atrás están flojos y podrían necesitar ajuste. El piso no se ha barrido adecuadamente desde el día lluvioso del martes.",
+              "Varios escritorios en la fila de atrás están flojos. El piso no se ha barrido adecuadamente desde el día lluvioso.",
           });
         }
 
         if (commentsRes && commentsRes.data) {
           setComments(commentsRes.data);
-        } else {
-          setComments([
-            {
-              id: 1,
-              user: "María Inspectora",
-              role: "inspector",
-              text: "Reporte inicial levantado durante la revisión matutina.",
-              date: "14 Oct 2026 • 09:42 AM",
-            },
-            {
-              id: 2,
-              user: "Alonso Coordinador",
-              role: "coordinator",
-              text: "Asignado al área de mantenimiento prioritario.",
-              date: "14 Oct 2026 • 10:15 AM",
-            },
-          ]);
         }
       } catch (error) {
-        console.error("Error al cargar el detalle del reporte", error);
+        console.error("Error al cargar el detalle", error);
       } finally {
+        // <-- CORREGIDO: Cambiado 'bits' por 'finally'
         setLoading(false);
       }
     };
@@ -105,13 +84,32 @@ export default function ReportDetailPage({
     fetchReportData();
   }, [router, id]);
 
+  const handleMarkAsCompleted = async () => {
+    const token = localStorage.getItem("token");
+    setUpdatingStatus(true);
+
+    try {
+      await axios.put(
+        `${API_URL}/api/reports/${id}/status`,
+        { status: "completed" },
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+
+      // <-- CORREGIDO: Cambiado '#' por '//' para evitar romper el compilador
+      setReport((prev: any) => ({ ...prev, status: "completed" }));
+    } catch (err) {
+      console.error("No se pudo cambiar el estado del reporte:", err);
+      alert("Error al intentar actualizar el estado del reporte.");
+    } finally {
+      setUpdatingStatus(false);
+    }
+  };
+
   const handleSendComment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newComment.trim()) return;
 
     const token = localStorage.getItem("token");
-
-    // Inserción optimista en el Front para mantener la fluidez de chat
     const freshComment = {
       id: comments.length + 1,
       user: user.name,
@@ -123,7 +121,6 @@ export default function ReportDetailPage({
     const commentTextTemp = newComment;
     setNewComment("");
 
-    // Petición real al Back para registrar el comentario en report_history o tabla comments
     try {
       await axios.post(
         `${API_URL}/api/reports/${id}/comments`,
@@ -131,14 +128,12 @@ export default function ReportDetailPage({
         { headers: { Authorization: `Bearer ${token}` } },
       );
     } catch (err) {
-      console.error("No se pudo guardar el comentario en la BD:", err);
+      console.error("Error guardando el comentario:", err);
     }
   };
 
   const handleExportPDF = () => {
-    alert(
-      "Generando PDF oficial de la FES Aragón... El archivo se descargará automáticamente.",
-    );
+    alert("Generando PDF oficial de la FES Aragón...");
     window.print();
   };
 
@@ -153,10 +148,10 @@ export default function ReportDetailPage({
   const userRole = user.role ? user.role.toLowerCase() : "";
   const isAdmin = userRole === "admin";
   const isEncargado = userRole === "coordinator";
+  const isCompleted = report.status === "completed";
 
   return (
     <div className="bg-slate-50 min-h-screen font-sans text-slate-900 pb-12">
-      {/* NAV CABECERA */}
       <nav className="border-b border-slate-200 bg-white sticky top-0 z-10 print:hidden">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16 items-center">
@@ -186,12 +181,16 @@ export default function ReportDetailPage({
                 Exportar PDF
               </button>
 
-              {(isAdmin || isEncargado) && (
-                <button className="flex items-center gap-2 px-4 py-2 bg-[#002B7A] hover:bg-[#CDB170] text-white hover:text-[#002B7A] rounded-xl text-sm font-bold shadow-sm transition-all">
+              {(isAdmin || isEncargado) && !isCompleted && (
+                <button
+                  onClick={handleMarkAsCompleted}
+                  disabled={updatingStatus}
+                  className="flex items-center gap-2 px-4 py-2 bg-[#002B7A] hover:bg-[#CDB170] text-white hover:text-[#002B7A] rounded-xl text-sm font-bold shadow-sm transition-all disabled:opacity-50"
+                >
                   <span className="material-symbols-outlined text-sm">
-                    check_circle
+                    {updatingStatus ? "sync" : "check_circle"}
                   </span>
-                  Marcar Atendido
+                  {updatingStatus ? "Actualizando..." : "Marcar Atendido"}
                 </button>
               )}
             </div>
@@ -199,19 +198,21 @@ export default function ReportDetailPage({
         </div>
       </nav>
 
-      {/* CONTENEDOR GENERAL */}
       <main className="max-w-5xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* DETALLES */}
           <div className="lg:col-span-2 space-y-6">
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
               <div className="p-6 border-b border-slate-100 bg-slate-50/50">
                 <div className="flex items-center justify-between mb-3">
-                  <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200 uppercase">
-                    {report.status === "pending"
-                      ? "Acción Pendiente"
-                      : report.status}
-                  </span>
+                  {isCompleted ? (
+                    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 uppercase">
+                      Completado
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200 uppercase">
+                      Acción Pendiente
+                    </span>
+                  )}
                   <span className="text-xs text-slate-400 flex items-center gap-1 font-medium">
                     <span className="material-symbols-outlined text-sm">
                       history
@@ -250,7 +251,9 @@ export default function ReportDetailPage({
                       <span className="material-symbols-outlined text-[#002B7A] text-lg">
                         school
                       </span>
-                      {report.location_type}
+                      {report.location_type === "classroom"
+                        ? "Aulas"
+                        : report.location_type}
                     </p>
                   </div>
                   <div>
@@ -304,7 +307,6 @@ export default function ReportDetailPage({
               </div>
             </div>
 
-            {/* Evidencias */}
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
               <h3 className="text-sm font-bold mb-4 flex items-center gap-2 text-slate-700">
                 <span className="material-symbols-outlined text-slate-400">
@@ -326,9 +328,8 @@ export default function ReportDetailPage({
             </div>
           </div>
 
-          {/* CHAT / BITÁCORA LATERAL */}
           <div className="space-y-6">
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-[480px]">
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-120">
               <div className="p-4 bg-slate-50 border-b border-slate-200">
                 <h3 className="font-bold text-sm text-[#002B7A] flex items-center gap-2">
                   <span className="material-symbols-outlined text-lg">
@@ -384,7 +385,6 @@ export default function ReportDetailPage({
               </form>
             </div>
 
-            {/* ORM DATA MAP */}
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 text-xs space-y-2.5">
               <h4 className="font-bold text-slate-400 uppercase tracking-widest mb-1">
                 Mapeo del ORM (Prisma)

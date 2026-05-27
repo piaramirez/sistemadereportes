@@ -52,6 +52,9 @@ class Token(BaseModel):
 class CommentCreate(BaseModel):
     text: str
 
+class StatusUpdateRequest(BaseModel):
+    status: str
+
 # --- FUNCIONES DE CONTROL DE ACCESO ---
 def verify_password(plain_password, hashed_password):
     return pwd_context.verify(plain_password, hashed_password)
@@ -117,7 +120,6 @@ async def get_stats():
 
 @app.get("/api/reports")
 async def get_reports():
-    # Modificado para incluir de forma profunda la ubicación y el edificio asociado
     reports = await db.report.find_many(
         take=20,
         order={"created_at": "desc"},
@@ -142,11 +144,11 @@ async def get_reports():
         for r in reports
     ]
 
-# --- NUEVO: ENDPOINT PARA DETALLE DE UN REPORTE INDIVIDUAL ---
+# --- ENDPOINT PARA DETALLE DE UN REPORTE INDIVIDUAL ---
 @app.get("/api/reports/{report_id}")
 async def get_report_detail(report_id: int):
     r = await db.report.find_unique(
-        where={"id": report_id},
+        where={"id": int(report_id)},
         include={
             "location": {
                 "include": {
@@ -171,12 +173,11 @@ async def get_report_detail(report_id: int):
         "comments": r.comments or "Sin comentarios adicionales por el momento."
     }
 
-# --- NUEVO: ENDPOINTS DE LA BITÁCORA DE SEGUIMIENTO (CHAT EN VIVO) ---
+# --- ENDPOINTS DE LA BITÁCORA DE SEGUIMIENTO (CHAT EN VIVO) ---
 @app.get("/api/reports/{report_id}/comments")
 async def get_report_comments(report_id: int):
-    # Recuperamos los registros de la tabla report_history que actúen como comentarios
     history = await db.reporthistory.find_many(
-        where={"report_id": report_id, "action": "comment"},
+        where={"report_id": int(report_id), "action": "comment"},
         include={"user": True},
         order={"created_at": "asc"}
     )
@@ -194,15 +195,13 @@ async def get_report_comments(report_id: int):
 
 @app.post("/api/reports/{report_id}/comments")
 async def create_report_comment(report_id: int, payload: CommentCreate):
-    # Buscamos un usuario administrador por defecto para firmar el mensaje temporalmente
     fallback_user = await db.user.find_first(where={"role": "admin"})
     if not fallback_user:
         raise HTTPException(status_code=404, detail="No se encontró un usuario válido para registrar el comentario")
 
-    # Guardamos la intervención en la tabla report_history mapeada en tu init.sql
     new_comment = await db.reporthistory.create(
         data={
-            "report_id": report_id,
+            "report_id": int(report_id),
             "user_id": fallback_user.id,
             "action": "comment",
             "old_value": "Ninguno",
@@ -210,3 +209,42 @@ async def create_report_comment(report_id: int, payload: CommentCreate):
         }
     )
     return {"status": "success", "comment_id": new_comment.id}
+
+# --- ENDPOINT CORREGIDO: MODIFICAR EL ESTADO DE UN REPORTE ---
+@app.put("/api/reports/{report_id}/status")
+async def update_report_status(report_id: int, payload: StatusUpdateRequest):
+    try:
+        # 1. Comprobamos que el reporte exista con casteo estricto
+        report_exists = await db.report.find_unique(where={"id": int(report_id)})
+        if not report_exists:
+            raise HTTPException(status_code=404, detail="Reporte no encontrado")
+
+        # 2. Actualizamos el estado físico en Postgres mediante Prisma
+        updated_report = await db.report.update(
+            where={"id": int(report_id)},
+            data={"status": payload.status}
+        )
+
+        # 3. Buscamos un admin para firmar la auditoría histórica obligatoria (Evita el error 500)
+        fallback_user = await db.user.find_first(where={"role": "admin"})
+        if not fallback_user:
+            raise HTTPException(status_code=404, detail="No se encontró un administrador para registrar el historial")
+
+        # 4. Guardamos registro del movimiento vinculando correctamente el user_id (UUID)
+        await db.reporthistory.create(
+            data={
+                "report_id": int(report_id),
+                "user_id": fallback_user.id, # <-- SOLUCIÓN: Inyectamos el ID del usuario firma
+                "action": "status_change",
+                "old_value": report_exists.status or "pending",
+                "new_value": payload.status
+            }
+        )
+
+        return {"status": "success", "new_status": updated_report.status}
+    except Exception as e:
+        if isinstance(e, HTTPException): 
+            raise e
+        # Imprime el rastro exacto en la terminal de Fedora por si acaso
+        print(f"--- ERROR DETECTADO EN EL PUT STATUS: {str(e)} ---")
+        raise HTTPException(status_code=500, detail=f"Error interno del servidor: {str(e)}")
