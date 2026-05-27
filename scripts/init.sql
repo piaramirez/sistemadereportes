@@ -1,5 +1,5 @@
 -- =====================================================
--- SISTEMA DE GESTIÓN DE REPORTES - EDUINSPECT
+-- SISTEMA DE GESTIÓN DE REPORTES - EDUINSPECT (UNAM)
 -- Base de datos: PostgreSQL 16
 -- =====================================================
 
@@ -101,34 +101,84 @@ CREATE TABLE IF NOT EXISTS report_history (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- ÍNDICES
+-- ÍNDICES DE RENDIMIENTO
 CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(status);
 CREATE INDEX IF NOT EXISTS idx_reports_report_date ON reports(report_date);
 CREATE INDEX IF NOT EXISTS idx_assignments_technician ON assignments(technician_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_user_read ON notifications(user_id, is_read);
 
--- DATOS DE PRUEBA (contraseña: admin123)
+-- =====================================================
+-- INSERCIÓN DE DATOS DE PRUEBA E INFRAESTRUCTURA UNAM
+-- =====================================================
+
+-- Usuarios Iniciales (Contraseña hash cifrada correspondiente a: admin123)
 INSERT INTO users (id, name, email, password_hash, role, created_at, updated_at) VALUES
-    (gen_random_uuid(), 'Admin Principal', 'admin@edusync.com', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X4.VTtYrTeD4y6P2G', 'admin', NOW(), NOW()),
-    (gen_random_uuid(), 'Juan Coordinador', 'coordinador@edusync.com', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X4.VTtYrTeD4y6P2G', 'coordinator', NOW(), NOW()),
-    (gen_random_uuid(), 'Pedro Técnico', 'tecnico@edusync.com', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X4.VTtYrTeD4y6P2G', 'technician', NOW(), NOW()),
-    (gen_random_uuid(), 'María Inspector', 'inspector@edusync.com', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X4.VTtYrTeD4y6P2G', 'inspector', NOW(), NOW());
+    (gen_random_uuid(), 'Pedro Ramirez (Admin)', 'pia@edusync.com', '$2b$12$VyEGdrMeM9XfF55Y2SFEkebHSReQ2o6djmWw6Xo9pw/3DLlQV6Kf6', 'admin', NOW(), NOW()),
+    (gen_random_uuid(), 'Alonso Coordinador', 'coordinador@edusync.com', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X4.VTtYrTeD4y6P2G', 'coordinator', NOW(), NOW()),
+    (gen_random_uuid(), 'Ismael Tecnico', 'tecnico@edusync.com', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X4.VTtYrTeD4y6P2G', 'technician', NOW(), NOW()),
+    (gen_random_uuid(), 'Maria Inspectora', 'inspector@edusync.com', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X4.VTtYrTeD4y6P2G', 'inspector', NOW(), NOW());
 
--- Edificios
+-- Infraestructura de Edificios Principales y Áreas Especiales
 INSERT INTO buildings (name, description) VALUES
-    ('Ala Principal', 'Edificio principal de aulas'),
-    ('Ala de Ciencias', 'Laboratorios'),
-    ('Biblioteca', 'Biblioteca central');
+    ('Edificio A1', 'Aulas generales y cubículos de ingeniería'),
+    ('Edificio A2', 'Aulas generales de tronco común'),
+    ('Edificio A3', 'Aulas generales'),
+    ('Edificio A4', 'Aulas generales'),
+    ('Edificio A5', 'Aulas generales'),
+    ('Edificio A6', 'Aulas generales'),
+    ('Edificio A7', 'Aulas generales'),
+    ('Edificio A8', 'Aulas generales'),
+    ('Biblioteca Central', 'Área de estudio, acervo y salas de cómputo'),
+    ('Idiomas', 'Coordinación y laboratorios de idiomas'),
+    ('Anexo', 'Aulas de especialidad, laboratorios pesados y auditorio'),
+    ('Canchas Deportivas', 'Zonas de recreación y deportes al aire libre'),
+    ('Gimnasio', 'Área deportiva techada y entrenamiento'),
+    ('Áreas Comunes y Jardineras', 'Pasillos generales y zonas verdes de la facultad'),
+    ('Estacionamiento', 'Zonas de control vehicular');
 
--- Ubicaciones
+-- Procedimiento Automático para Sembrar 14 Salones y 2 Baños por Edificio (A1 a A8)
+DO $$
+DECLARE
+    b_id INTEGER;
+    edificio_nombre VARCHAR;
+    i INTEGER;
+BEGIN
+    FOR b_id, edificio_nombre IN SELECT id, name FROM buildings WHERE name LIKE 'Edificio A%' LOOP
+        
+        -- Insertar 14 salones por cada edificio de la serie
+        FOR i IN 1..14 LOOP
+            INSERT INTO locations (building_id, name, location_type, floor, code)
+            VALUES (
+                b_id, 
+                'Salón ' || i, 
+                'classroom', 
+                CASE WHEN i <= 7 THEN 1 ELSE 2 END, -- Piso 1 salones 1-7, Piso 2 salones 8-14
+                edificio_nombre || '-S' || LPAD(i::text, 2, '0')
+            );
+        END LOOP;
+
+        -- Insertar Baño de Hombres (Piso 1)
+        INSERT INTO locations (building_id, name, location_type, floor, code)
+        VALUES (b_id, 'Baño de Hombres', 'bathroom', 1, edificio_nombre || '-BH1');
+
+        -- Insertar Baño de Mujeres (Piso 2)
+        INSERT INTO locations (building_id, name, location_type, floor, code)
+        VALUES (b_id, 'Baño de Mujeres', 'bathroom', 2, edificio_nombre || '-BM2');
+
+    END LOOP;
+END $$;
+
+-- Ubicaciones Específicas en Áreas Especiales, Laboratorios y Áreas Verdes
 INSERT INTO locations (building_id, name, location_type, floor, code) VALUES
-    (1, 'Aula 101', 'classroom', 1, 'P-101'),
-    (1, 'Aula 102', 'classroom', 1, 'P-102'),
-    (1, 'Baño Varones', 'bathroom', 1, 'P-BV1'),
-    (2, 'Laboratorio Química', 'lab', 2, 'C-LAB01'),
-    (3, 'Sala de Lectura', 'common_area', 1, 'BIB-01');
+    ((SELECT id FROM buildings WHERE name = 'Biblioteca Central'), 'Pasillo Principal', 'common_area', 1, 'BIB-PAS'),
+    ((SELECT id FROM buildings WHERE name = 'Biblioteca Central'), 'Sala de Cómputo', 'lab', 1, 'BIB-COMP'),
+    ((SELECT id FROM buildings WHERE name = 'Anexo'), 'Laboratorio de Electricidad', 'lab', 1, 'ANX-LAB-EL'),
+    ((SELECT id FROM buildings WHERE name = 'Anexo'), 'Laboratorio de Ingeniería', 'lab', 1, 'ANX-LAB-ING'),
+    ((SELECT id FROM buildings WHERE name = 'Anexo'), 'Laboratorio de Mecánica', 'lab', 2, 'ANX-LAB-MEC'),
+    ((SELECT id FROM buildings WHERE name = 'Áreas Comunes y Jardineras'), 'Jardineras Centrales', 'common_area', 1, 'COM-JARD'),
+    ((SELECT id FROM buildings WHERE name = 'Estacionamiento'), 'Acceso Principal Estacionamiento', 'common_area', 1, 'EST-ACC');
 
--- Reportes de prueba
+-- Generación de 10 Reportes Iniciales Aleatorios vinculados a la Infraestructura Creada
 INSERT INTO reports (report_number, reporter_id, location_id, report_date, inspection_date, comments, status) 
 SELECT 
     'R-' || LPAD(generate_series::TEXT, 5, '0'),
@@ -136,6 +186,6 @@ SELECT
     (SELECT id FROM locations ORDER BY RANDOM() LIMIT 1),
     CURRENT_DATE,
     CURRENT_DATE,
-    'Problemas de limpieza y mantenimiento encontrados.',
+    'Reporte automatizado de mantenimiento preventivo/correctivo.',
     CASE WHEN generate_series % 2 = 0 THEN 'pending' ELSE 'completed' END
 FROM generate_series(1, 10);
