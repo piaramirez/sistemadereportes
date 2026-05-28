@@ -119,9 +119,21 @@ docker compose up -d postgres
 
 docker compose down -v
 docker compose up -d --build
+
 # Generar cliente en el backend de Python
+
 docker compose exec backend prisma generate
 
 # Si manejas migraciones o quieres asegurar el push directo del esquema:
+
 docker compose exec backend prisma db push
 docker compose logs -f
+
+//
+admin (Administrador global)
+
+coordinator (El coordinador o "encargado" que mencionas, el cual mapeamos como isEncargado)
+
+technician (Técnico de mantenimiento asignado a las reparaciones)
+
+inspector (El inspector en plantel que levanta los reportes iniciales)

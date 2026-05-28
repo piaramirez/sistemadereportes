@@ -117,6 +117,7 @@ export default function DashboardPage() {
             <span className="material-symbols-outlined">dashboard</span> Panel
             Principal
           </a>
+
           <button
             onClick={() => router.push("/dashboard/reports")}
             className="flex items-center gap-3 w-full px-4 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl font-medium transition-colors text-left cursor-pointer"
@@ -124,6 +125,17 @@ export default function DashboardPage() {
             <span className="material-symbols-outlined">description</span>{" "}
             Reportes
           </button>
+
+          {/* NUEVO BOTÓN: Espacio para la bitácora global de comentarios y asignaciones */}
+          <button
+            onClick={() =>
+              alert("Módulo de Mensajes en desarrollo transicional...")
+            }
+            className="flex items-center gap-3 w-full px-4 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl font-medium transition-colors text-left cursor-pointer"
+          >
+            <span className="material-symbols-outlined">forum</span> Mensajes
+          </button>
+
           {!isEmpleado && (
             <a
               className="flex items-center gap-3 px-4 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl font-medium transition-colors"
@@ -147,7 +159,7 @@ export default function DashboardPage() {
         <div className="p-4 border-t border-slate-100">
           <button
             onClick={handleLogout}
-            className="flex items-center gap-3 w-full px-4 py-2.5 text-red-600 hover:bg-red-50 rounded-xl font-semibold transition-colors"
+            className="flex items-center gap-3 w-full px-4 py-2.5 text-red-600 hover:bg-red-50 rounded-xl font-semibold transition-colors animate-fade-in"
           >
             <span className="material-symbols-outlined">logout</span> Cerrar
             Sesión
@@ -330,20 +342,6 @@ export default function DashboardPage() {
                               >
                                 <span className="material-symbols-outlined text-[18px]">
                                   edit
-                                </span>
-                              </button>
-
-                              <button
-                                onClick={() =>
-                                  alert(
-                                    `Abriendo asignación rápida para el reporte #${report.id}`,
-                                  )
-                                }
-                                className="text-blue-500 hover:text-blue-600 p-1.5 hover:bg-blue-50 rounded-lg transition-all"
-                                title="Asignar técnico de mantenimiento"
-                              >
-                                <span className="material-symbols-outlined text-[18px]">
-                                  assignment_turned_in
                                 </span>
                               </button>
                             </>

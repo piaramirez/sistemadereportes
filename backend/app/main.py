@@ -144,6 +144,10 @@ async def get_report_detail(report_id: int):
 
     report_images = await db.image.find_many(where={"report_id": int(report_id)})
 
+    # Consultar las calificaciones físicas de estrellas para que Next.js las precargue en el Form de Edición
+    floor_eval = await db.evaluation.find_first(where={"report_id": int(report_id), "criteria_name": "Limpieza del Suelo"})
+    light_eval = await db.evaluation.find_first(where={"report_id": int(report_id), "criteria_name": "Funcionalidad de Iluminación"})
+
     # Traer comentarios del chat de manera limpia usando la relación del esquema reporthistory
     history_logs = await db.reporthistory.find_many(
         where={"report_id": int(report_id), "action": "comment"},
@@ -171,14 +175,16 @@ async def get_report_detail(report_id: int):
         "location": str(r.location.name) if r.location else "Ubicación General",
         "building": str(r.location.building.name) if r.location and r.location.building else "FES Aragón",
         "status": str(r.status),
-        "comments": str(r.comments) or "Sin comentarios adicionales por el momento.",
+        "comments": str(r.comments) or "",
         "assigned_technician": technician_name,
         "assigned_to_id": assigned_to_id,
+        "floor_cleaning_rating": floor_eval.rating if floor_eval else 5,
+        "lighting_rating": light_eval.rating if light_eval else 5,
         "images": [{"url": str(img.url), "caption": str(img.caption)} for img in report_images],
         "chat_comments": comments_list
     }
 
-# NUEVO ENDPOINT FIX: Guardar comentarios y lanzar notificaciones con sintaxis estricta de Prisma + Logs de diagnóstico forzados
+# GUARDAR COMENTARIOS Y LANZAR NOTIFICACIONES
 @app.post("/api/reports/{report_id}/comments")
 async def add_report_comment(report_id: int, payload: CommentCreateRequest, token: str = Depends(oauth2_scheme)):
     try:
@@ -192,7 +198,6 @@ async def add_report_comment(report_id: int, payload: CommentCreateRequest, toke
         if not report_exists:
             raise HTTPException(status_code=404, detail="El reporte no existe")
 
-        # 1. Guardar el comentario usando la relación explícita 'connect' para evitar error 500
         new_comment_log = await db.reporthistory.create(
             data={
                 "report": {"connect": {"id": int(report_id)}},
@@ -203,25 +208,19 @@ async def add_report_comment(report_id: int, payload: CommentCreateRequest, toke
             }
         )
 
-        # 2. LÓGICA DE NOTIFICACIONES INTELIGENTES INSTITUCIONALES
         assignment = await db.assignment.find_first(where={"report_id": int(report_id)})
-        
         target_user_id = None
         notify_message = f"Nuevo comentario de {current_user.name} en el reporte {report_exists.report_number}"
 
         if assignment:
-            # Si escribe el técnico asignado, se le notifica al inspector que reportó
             if str(current_user.id) == str(assignment.technician_id):
                 target_user_id = report_exists.reporter_id
             else:
-                # Si escribe un admin/coordinador, se le avisa al técnico
                 target_user_id = assignment.technician_id
         else:
-            # Si no hay nadie asignado aún y comenta un admin, le avisa al inspector
             if str(current_user.id) != str(report_exists.reporter_id):
                 target_user_id = report_exists.reporter_id
 
-        # Insertar notificación usando conexiones seguras del ORM
         if target_user_id:
             await db.notification.create(
                 data={
@@ -236,12 +235,10 @@ async def add_report_comment(report_id: int, payload: CommentCreateRequest, toke
         return {"status": "success", "message": "Comentario guardado y usuario notificado."}
 
     except Exception as e:
-        # 🚨 MENSAJE DE DIAGNÓSTICO EN TERMINAL DOCKER: Revela el truene real interno
         print("\n" + "💥"*20)
         print("ERROR CRÍTICO DETECTADO EN /comments ENDPOINT:")
         print(repr(e))
         print("💥"*20 + "\n")
-        
         if isinstance(e, HTTPException): raise e
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -272,7 +269,6 @@ async def update_report_status(report_id: int, payload: StatusUpdateRequest, tok
                 }
             )
             
-            # Notificación de actualización de estatus al creador del reporte
             if report_exists.reporter_id and str(current_user.id) != str(report_exists.reporter_id):
                 await db.notification.create(
                     data={
@@ -290,6 +286,185 @@ async def update_report_status(report_id: int, payload: StatusUpdateRequest, tok
         print("ERROR CRÍTICO DETECTADO EN /status ENDPOINT:")
         print(repr(e))
         print("⚠️"*20 + "\n")
+        if isinstance(e, HTTPException): raise e
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ENDPOINT PATCH HOMOLOGADO: Modifica todos los campos estructurales del reporte a la par del formulario
+@app.patch("/api/reports/{report_id}")
+async def patch_report_detail(
+    report_id: int,
+    building_name: Optional[str] = Form(None),
+    classroom_name: Optional[str] = Form(None),
+    location_type: Optional[str] = Form(None),
+    floor_cleaning: Optional[str] = Form(None),
+    lighting_status: Optional[str] = Form(None),
+    comments: Optional[str] = Form(None),
+    assigned_to_id: Optional[str] = Form(None),
+    delete_photo: Optional[str] = Form("false"),
+    file: Optional[UploadFile] = File(None),
+    token: str = Depends(oauth2_scheme)
+):
+    try:
+        user_data = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        current_user = await db.user.find_unique(where={"email": user_data.get("sub")})
+        
+        if not current_user or str(current_user.role).lower() not in ["admin", "coordinator"]:
+            raise HTTPException(status_code=403, detail="No tienes autorización de auditoría para editar reportes.")
+
+        report_exists = await db.report.find_unique(
+            where={"id": int(report_id)},
+            include={"location": True}
+        )
+        if not report_exists:
+            raise HTTPException(status_code=404, detail="El reporte especificado no existe.")
+
+        # 1. ACTUALIZACIÓN ESTRUCTURADA DE EDIFICIO Y UBICACIÓN
+        location_id = report_exists.location_id
+        if building_name and classroom_name:
+            building = await db.building.find_first(where={"name": building_name})
+            if not building:
+                building = await db.building.create(data={"name": building_name})
+            
+            location = await db.location.find_first(
+                where={"name": classroom_name, "building_id": building.id}
+            )
+            if not location:
+                location = await db.location.create(
+                    data={
+                        "name": classroom_name, 
+                        "location_type": location_type or "classroom", 
+                        "building_id": building.id
+                    }
+                )
+            location_id = location.id
+
+        await db.report.update(
+            where={"id": int(report_id)},
+            data={
+                "comments": comments if comments is not None else report_exists.comments,
+                "location_id": location_id
+            }
+        )
+
+        # 2. SINCRO DE CRITERIOS DE EVALUACIÓN (ESTRELLAS) SIN ACUMULACIÓN
+        if floor_cleaning:
+            await db.evaluation.delete_many(
+                where={"report_id": int(report_id), "criteria_name": "Limpieza del Suelo"}
+            )
+            await db.evaluation.create(
+                data={
+                    "report_id": int(report_id),
+                    "criteria_name": "Limpieza del Suelo",
+                    "rating": int(floor_cleaning)
+                }
+            )
+
+        if lighting_status:
+            await db.evaluation.delete_many(
+                where={"report_id": int(report_id), "criteria_name": "Funcionalidad de Iluminación"}
+            )
+            await db.evaluation.create(
+                data={
+                    "report_id": int(report_id),
+                    "criteria_name": "Funcionalidad de Iluminación",
+                    "rating": int(lighting_status)
+                }
+            )
+
+        # 3. RE-ASIGNACIÓN RELACIONAL DEL TÉCNICO
+        if assigned_to_id:
+            if assigned_to_id == "unassigned":
+                await db.assignment.delete_many(where={"report_id": int(report_id)})
+            else:
+                tech_uuid = str(uuid.UUID(assigned_to_id))
+                existing_assign = await db.assignment.find_first(where={"report_id": int(report_id)})
+                
+                if existing_assign:
+                    await db.assignment.update(
+                        where={"id": existing_assign.id},
+                        data={"technician_id": tech_uuid, "status": "assigned"}
+                    )
+                else:
+                    await db.assignment.create(
+                        data={
+                            "report_id": int(report_id),
+                            "technician_id": tech_uuid,
+                            "assigner_id": current_user.id,
+                            "status": "assigned"
+                        }
+                    )
+
+        # 4. GESTIÓN FÍSICA DE ARCHIVOS E IMÁGENES
+        if delete_photo == "true":
+            await db.image.delete_many(where={"report_id": int(report_id)})
+
+        if file:
+            upload_dir = "static/uploads"
+            os.makedirs(upload_dir, exist_ok=True)
+            file_name = f"{int(datetime.utcnow().timestamp())}_{file.filename}"
+            file_path = os.path.join(upload_dir, file_name)
+            
+            with open(file_path, "wb") as buffer:
+                buffer.write(await file.read())
+            
+            await db.image.create(
+                data={
+                    "report_id": int(report_id),
+                    "url": f"http://localhost:8000/static/uploads/{file_name}",
+                    "caption": "Evidencia modificada en auditoría."
+                }
+            )
+
+        # 5. REGISTRAR HISTORIAL DE MOVIMIENTOS
+        await db.reporthistory.create(
+            data={
+                "report_id": int(report_id),
+                "user_id": current_user.id,
+                "action": "edit",
+                "old_value": "datos_previos",
+                "new_value": "Formulario estructurado modificado integralmente."
+            }
+        )
+
+        return {"status": "success", "message": "Datos modificados exitosamente."}
+
+    except Exception as e:
+        print("\n" + "⚙️"*20)
+        print("ERROR EN PATCH /api/reports VIA FORM_DATA:")
+        print(repr(e))
+        print("⚙️"*20 + "\n")
+        if isinstance(e, HTTPException): raise e
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ENDPOINT DELETE SEGURO CON RESTRICCIÓN POR ESTADO COMPLETED
+@app.delete("/api/reports/{report_id}")
+async def delete_report(report_id: int, token: str = Depends(oauth2_scheme)):
+    try:
+        user_data = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_role = str(user_data.get("role", "")).lower()
+        
+        if user_role != "admin":
+            raise HTTPException(status_code=403, detail="Únicamente administradores de la UNAM pueden purgar reportes.")
+
+        report_exists = await db.report.find_unique(where={"id": int(report_id)})
+        if not report_exists:
+            raise HTTPException(status_code=404, detail="El reporte no existe en la base de datos.")
+
+        # REGLA DE SEGURIDAD CRÍTICA INSTITUCIONAL
+        if str(report_exists.status).lower() == "completed":
+            raise HTTPException(
+                status_code=400, 
+                detail="Operación rechazada: No se permite eliminar incidencias con estado 'Completado'."
+            )
+
+        await db.report.delete(where={"id": int(report_id)})
+        return {"status": "success", "message": "Registro eliminado permanentemente de Postgres."}
+
+    except Exception as e:
+        print("\n" + "❌"*20)
+        print("ERROR EN EL ENDPOINT DELETE:")
+        print(repr(e))
+        print("❌"*20 + "\n")
         if isinstance(e, HTTPException): raise e
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -332,11 +507,12 @@ async def create_report(
         if not location:
             location = await db.location.create(data={"name": classroom_name, "location_type": location_type, "building_id": building.id})
 
-        total_reports = await db.report.count()
-        generated_number = f"R-{str(total_reports + 1).zfill(5)}"
+        # REPARACIÓN COMPLETA: Evitar colisiones UniqueConstraint buscando el ID más alto de Postgres de forma segura
+        last_report = await db.report.find_first(order={"id": "desc"})
+        next_id = (last_report.id + 1) if last_report else 1
+        generated_number = f"R-{str(next_id).zfill(5)}"
         now_dt = datetime.utcnow()
 
-        # 1. Crear reporte conectando relaciones
         try:
             new_report = await db.report.create(
                 data={
@@ -353,7 +529,6 @@ async def create_report(
             print(f"Fallo al registrar reporte: {str(err_report)}")
             raise HTTPException(status_code=500, detail=f"Fallo al registrar reporte: {str(err_report)}")
 
-        # 2. Evaluaciones físicas
         try:
             await db.evaluation.create(
                 data={"report": {"connect": {"id": new_report.id}}, "criteria_name": "Limpieza del Suelo", "rating": 5 if floor_cleaning == "bueno" else 1}
@@ -365,7 +540,6 @@ async def create_report(
             print(f"Fallo en criterios de evaluación: {str(err_eval)}")
             raise HTTPException(status_code=500, detail=f"Fallo en criterios de evaluación: {str(err_eval)}")
 
-        # 3. Asignación técnica inmediata + Notificación de asignación
         if assigned_to_id and assigned_to_id != "unassigned":
             try:
                 tech_uuid = str(uuid.UUID(assigned_to_id))
@@ -378,7 +552,6 @@ async def create_report(
                     }
                 )
                 
-                # Crear la notificación para el técnico asignado
                 await db.notification.create(
                     data={
                         "user": {"connect": {"id": tech_uuid}},
@@ -391,7 +564,6 @@ async def create_report(
             except (ValueError, Exception) as err_assign:
                 print(f"--- Error omitido en asignación relacional: {str(err_assign)} ---")
 
-        # 4. Guardado de archivos físicos e imágenes
         if file:
             try:
                 upload_dir = "static/uploads"
@@ -412,7 +584,6 @@ async def create_report(
             except Exception as err_img:
                 print(f"--- Error al guardar archivo: {str(err_img)} ---")
 
-        # 5. Historial de auditoría
         try:
             await db.reporthistory.create(
                 data={
@@ -428,9 +599,9 @@ async def create_report(
         return {"status": "success", "report_number": str(generated_number)}
 
     except Exception as e:
-        print("\n" + "🛑"*20)
-        print("ERROR CRÍTICO DETECTADO EN POST /reports:")
+        print("\n" + "********")
+        print("ERROR CRÍTICO DETECTADO EN /reports ENDPOINT:")
         print(repr(e))
-        print("🛑"*20 + "\n")
+        print("********" + "\n")
         if isinstance(e, HTTPException): raise e
         raise HTTPException(status_code=500, detail="Error relacional interno")

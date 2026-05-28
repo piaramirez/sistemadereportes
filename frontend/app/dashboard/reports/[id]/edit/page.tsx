@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import axios from "axios";
 
-export default function ReportDetailPage({
+export default function EditReportPage({
   params,
 }: {
   params: Promise<{ id: string }>;
@@ -15,25 +15,31 @@ export default function ReportDetailPage({
   const id = unwrappedParams.id;
 
   const [user, setUser] = useState<any>(null);
-  const [report, setReport] = useState<any>(null);
-  const [comments, setComments] = useState<any[]>([]);
-  const [newComment, setNewComment] = useState("");
   const [loading, setLoading] = useState(true);
-  const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  // <-- NUEVO: Estado para controlar el modal estético de eliminación
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+  // --- NUEVOS ESTADOS COMPATIBLES CON CREACIÓN ---
+  const [building, setBuilding] = useState("");
+  const [location, setLocation] = useState("");
+  const [locationType, setLocationType] = useState("classroom");
+  const [floorCleaning, setFloorCleaning] = useState("5"); // Se guarda como string de calificación
+  const [lightingStatus, setLightingStatus] = useState("5");
+  const [comments, setComments] = useState("");
+  const [status, setStatus] = useState("pending");
+  const [assignedTechId, setAssignedTechId] = useState("unassigned");
+
+  // Gestión de Imágenes/Evidencias
+  const [existingImages, setExistingImages] = useState<any[]>([]);
+  const [newFile, setNewFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [deleteExistingPhoto, setDeleteExistingPhoto] = useState(false);
+
+  // Catálogos
+  const [technicians, setTechnicians] = useState<any[]>([]);
 
   const API_URL = "http://localhost:8000";
 
   useEffect(() => {
-    const link = document.createElement("link");
-    link.href =
-      "https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap";
-    link.rel = "stylesheet";
-    document.head.appendChild(link);
-
     const token = localStorage.getItem("token");
     const userData = localStorage.getItem("user");
 
@@ -42,125 +48,123 @@ export default function ReportDetailPage({
       return;
     }
 
-    setUser(JSON.parse(userData));
+    const parsedUser = JSON.parse(userData);
+    const role = parsedUser.role ? parsedUser.role.toLowerCase() : "";
 
-    const fetchReportData = async () => {
+    if (role !== "admin" && role !== "coordinator") {
+      alert("Acceso denegado: Tu rol no permite la edición de solicitudes.");
+      router.push(`/dashboard/reports/${id}`);
+      return;
+    }
+
+    setUser(parsedUser);
+
+    const loadData = async () => {
       try {
         const headers = { Authorization: `Bearer ${token}` };
 
-        const [reportRes, commentsRes] = await Promise.all([
-          axios
-            .get(`${API_URL}/api/reports/${id}`, { headers })
-            .catch(() => null),
-          axios
-            .get(`${API_URL}/api/reports/${id}/comments`, { headers })
-            .catch(() => null),
+        const [reportRes, usersRes] = await Promise.all([
+          axios.get(`${API_URL}/api/reports/${id}`, { headers }),
+          axios.get(`${API_URL}/api/users`, { headers }),
         ]);
 
-        if (reportRes && reportRes.data) {
-          setReport(reportRes.data);
-        } else {
-          setReport({
-            id: id,
-            report_number: `R-${id.padStart(5, "0")}`,
-            reporter_name: "Inspector UNAM",
-            date_formatted: "Sin fecha",
-            location_type: "classroom",
-            location: "Ubicación General",
-            building: "FES Aragón",
-            status: "pending",
-            comments:
-              "No se pudieron cargar los datos del reporte desde la API.",
-            assigned_technician: "Sin técnico asignado",
-            images: [],
-          });
+        if (reportRes.data) {
+          const r = reportRes.data;
+          setBuilding(r.building || "");
+          setLocation(r.location || "");
+          setLocationType(r.location_type || "classroom");
+          setComments(r.comments || "");
+          setStatus(r.status || "pending");
+          setAssignedTechId(r.assigned_to_id || "unassigned");
+          setExistingImages(r.images || []);
+
+          // Mapear evaluaciones previas si existen en la respuesta del backend
+          if (r.floor_cleaning_rating)
+            setFloorCleaning(String(r.floor_cleaning_rating));
+          if (r.lighting_rating) setLightingStatus(String(r.lighting_rating));
         }
 
-        if (commentsRes && commentsRes.data) {
-          setComments(commentsRes.data);
+        if (usersRes.data) {
+          const techList = usersRes.data.filter(
+            (u: any) => u.role.toLowerCase() === "technician",
+          );
+          setTechnicians(techList);
         }
-      } catch (error) {
-        console.error("Error al cargar el detalle", error);
+      } catch (err) {
+        console.error("Error cargando los datos de edición:", err);
+        alert("No se pudieron recuperar los registros de Postgres.");
       } finally {
-        // <-- AQUÍ: Cambia 'bits' por 'finally' para apagar el cargador limpiamente
         setLoading(false);
       }
     };
 
-    fetchReportData();
+    loadData();
   }, [router, id]);
 
-  const handleMarkAsCompleted = async () => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setNewFile(file);
+      setPreviewUrl(URL.createObjectURL(file));
+      setDeleteExistingPhoto(true);
+    }
+  };
+
+  const handleRemoveExistingPhoto = () => {
+    setDeleteExistingPhoto(true);
+    setNewFile(null);
+    setPreviewUrl(null);
+  };
+
+  const handleFormSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
     const token = localStorage.getItem("token");
-    setUpdatingStatus(true);
 
     try {
+      const headers = { Authorization: `Bearer ${token}` };
+
+      // 1. Sincronizar primero el estado operativo mediante el endpoint PUT
       await axios.put(
         `${API_URL}/api/reports/${id}/status`,
-        { status: "completed" },
-        { headers: { Authorization: `Bearer ${token}` } },
+        { status },
+        { headers },
       );
 
-      setReport((prev: any) => ({ ...prev, status: "completed" }));
-    } catch (err) {
-      console.error("No se pudo cambiar el estado del reporte:", err);
-      alert("Error al intentar actualizar el estado del reporte.");
-    } finally {
-      setUpdatingStatus(false);
-    }
-  };
+      // 2. Construir FormData completo con toda la estructura homologada
+      const formData = new FormData();
+      formData.append("building_name", building);
+      formData.append("classroom_name", location);
+      formData.append("location_type", locationType);
+      formData.append("floor_cleaning", floorCleaning);
+      formData.append("lighting_status", lightingStatus);
+      formData.append("comments", comments);
+      formData.append("assigned_to_id", assignedTechId);
+      formData.append("delete_photo", String(deleteExistingPhoto));
 
-  // FUNCIÓN DE ELIMINACIÓN CONFIRMADA DESDE EL MODAL ESTÉTICO
-  const handleConfirmDelete = async () => {
-    setDeleting(true);
-    try {
-      const token = localStorage.getItem("token");
-      await axios.delete(`${API_URL}/api/reports/${id}`, {
-        headers: { Authorization: `Bearer ${token}` },
+      if (newFile) {
+        formData.append("file", newFile);
+      }
+
+      await axios.patch(`${API_URL}/api/reports/${id}`, formData, {
+        headers: {
+          ...headers,
+          "Content-Type": "multipart/form-data",
+        },
       });
-      setShowDeleteModal(false);
-      router.push("/dashboard"); // Salida directa al dashboard sin congelamientos
+
+      alert("Mantenimiento actualizado de forma exitosa en Postgres.");
+      router.push(`/dashboard/reports/${id}`);
+      router.refresh();
     } catch (err) {
-      console.error("Error al eliminar el reporte:", err);
-      alert("No se pudo borrar el reporte de la base de datos.");
+      console.error("Error al guardar la edición:", err);
+      alert("Ocurrió un error interno al guardar en el servidor.");
     } finally {
-      setDeleting(false);
+      setSaving(false);
     }
   };
 
-  const handleSendComment = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newComment.trim()) return;
-
-    const token = localStorage.getItem("token");
-    const freshComment = {
-      id: comments.length + 1,
-      user: user.name,
-      role: user.role,
-      text: newComment,
-      date: "Ahora mismo",
-    };
-    setComments([...comments, freshComment]);
-    const commentTextTemp = newComment;
-    setNewComment("");
-
-    try {
-      await axios.post(
-        `${API_URL}/api/reports/${id}/comments`,
-        { text: commentTextTemp },
-        { headers: { Authorization: `Bearer ${token}` } },
-      );
-    } catch (err) {
-      console.error("Error guardando el comentario:", err);
-    }
-  };
-
-  const handleExportPDF = () => {
-    alert("Generando PDF oficial de la FES Aragón...");
-    window.print();
-  };
-
-  if (loading || !report) {
+  if (loading) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
         <div className="w-10 h-10 border-4 border-[#002B7A] border-t-transparent rounded-full animate-spin"></div>
@@ -168,350 +172,255 @@ export default function ReportDetailPage({
     );
   }
 
-  const userRole = user.role ? user.role.toLowerCase() : "";
-  const isAdmin = userRole === "admin";
-  const isEncargado = userRole === "coordinator";
-  const isCompleted = report.status === "completed";
-
   return (
-    <div className="bg-slate-50 min-h-screen font-sans text-slate-900 pb-12 relative">
-      {/* NAV CABECERA */}
-      <nav className="border-b border-slate-200 bg-white sticky top-0 z-10 print:hidden">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16 items-center">
-            <div className="flex items-center gap-4">
-              <Link
-                href="/dashboard"
-                className="p-2 text-slate-400 hover:text-[#002B7A] transition-colors"
-              >
-                <span className="material-symbols-outlined">arrow_back</span>
-              </Link>
-              <h1 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                Reporte{" "}
-                <span className="text-[#002B7A] font-black">
-                  {report.report_number}
-                </span>
-              </h1>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleExportPDF}
-                className="flex items-center gap-2 px-3.5 py-2 border border-slate-300 rounded-xl text-sm font-bold text-slate-700 bg-white hover:bg-slate-50 transition-all shadow-sm"
-              >
-                <span className="material-symbols-outlined text-sm text-[#002B7A]">
-                  picture_as_pdf
-                </span>
-                Exportar PDF
-              </button>
-
-              {!isCompleted && (
-                <Link
-                  href={`/dashboard/reports/${id}/edit`}
-                  className="flex items-center gap-2 px-3.5 py-2 border border-amber-300 rounded-xl text-sm font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 transition-all shadow-sm"
-                >
-                  <span className="material-symbols-outlined text-sm">
-                    edit
-                  </span>
-                  Editar
-                </Link>
-              )}
-
-              {/* BOTÓN ELIMINAR ACTUALIZADO: Ahora abre el Modal de Tailwind de abajo */}
-              {isAdmin && (
-                <button
-                  onClick={() => setShowDeleteModal(true)}
-                  className="flex items-center gap-2 px-3.5 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-bold shadow-sm transition-all"
-                >
-                  <span className="material-symbols-outlined text-sm">
-                    delete
-                  </span>
-                  Eliminar
-                </button>
-              )}
-
-              {(isAdmin || isEncargado) && !isCompleted && (
-                <button
-                  onClick={handleMarkAsCompleted}
-                  disabled={updatingStatus}
-                  className="flex items-center gap-2 px-4 py-2 bg-[#002B7A] hover:bg-[#CDB170] text-white hover:text-[#002B7A] rounded-xl text-sm font-bold shadow-sm transition-all disabled:opacity-50"
-                >
-                  <span className="material-symbols-outlined text-sm">
-                    {updatingStatus ? "sync" : "check_circle"}
-                  </span>
-                  {updatingStatus ? "Actualizando..." : "Marcar Atendido"}
-                </button>
-              )}
-            </div>
+    <div className="bg-slate-50 min-h-screen font-sans text-slate-900 pb-12">
+      <nav className="border-b border-slate-200 bg-white sticky top-0 z-10">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex h-16 items-center gap-4">
+            <Link
+              href={`/dashboard/reports/${id}`}
+              className="p-2 text-slate-400 hover:text-[#002B7A] transition-colors"
+            >
+              <span className="material-symbols-outlined">arrow_back</span>
+            </Link>
+            <h1 className="text-xl font-bold text-slate-800">
+              Modificar Reporte <span className="text-[#002B7A]">#{id}</span>
+            </h1>
           </div>
         </div>
       </nav>
 
-      {/* CONTENIDO DE LA VISTA */}
-      <main className="max-w-5xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-2 space-y-6">
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-              <div className="p-6 border-b border-slate-100 bg-slate-50/50">
-                <div className="flex items-center justify-between mb-3">
-                  {isCompleted ? (
-                    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 uppercase">
-                      Completado
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200 uppercase">
-                      Acción Pendiente
-                    </span>
-                  )}
-                  <span className="text-xs text-slate-400 flex items-center gap-1 font-medium">
-                    <span className="material-symbols-outlined text-sm">
-                      history
-                    </span>
-                    Sincronizado con Postgres
-                  </span>
-                </div>
-                <h2 className="text-lg font-black text-[#002B7A]">
-                  Detalles de la Solicitud de Mantenimiento
-                </h2>
-              </div>
+      <main className="max-w-3xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+        <form
+          onSubmit={handleFormSubmit}
+          className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6"
+        >
+          <h2 className="text-sm font-black text-[#002B7A] uppercase tracking-wider border-b pb-2">
+            Formulario Oficial de Modificación
+          </h2>
 
-              <div className="p-6">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-6 gap-x-8">
-                  <div>
-                    <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
-                      Nombre del Reportero
-                    </label>
-                    <p className="mt-1 text-sm font-semibold text-slate-800">
-                      {report.reporter_name}
-                    </p>
-                  </div>
-                  <div>
-                    <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
-                      Fecha del Reporte
-                    </label>
-                    <p className="mt-1 text-sm font-semibold text-slate-800">
-                      {report.date_formatted || report.date}
-                    </p>
-                  </div>
-                  <div>
-                    <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
-                      Tipo de Ubicación
-                    </label>
-                    <p className="mt-1 flex items-center gap-1.5 text-sm font-semibold text-slate-800">
-                      <span className="material-symbols-outlined text-[#002B7A] text-lg">
-                        school
-                      </span>
-                      {report.location_type === "classroom"
-                        ? "Aulas"
-                        : report.location_type}
-                    </p>
-                  </div>
-                  <div>
-                    <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
-                      Edificio / Aula
-                    </label>
-                    <p className="mt-1 text-sm font-bold text-[#002B7A]">
-                      {report.building}, {report.location}
-                    </p>
-                  </div>
-
-                  <div className="sm:col-span-2 pt-2">
-                    <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-                      Personal Encargado de Reparación
-                    </label>
-                    <p className="text-xs font-bold text-purple-700 bg-purple-50 px-3 py-1.5 rounded-xl inline-flex items-center gap-1.5 border border-purple-100">
-                      <span className="material-symbols-outlined text-sm">
-                        engineering
-                      </span>
-                      {report.assigned_technician || "Sin técnico asignado"}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="mt-8">
-                  <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-3">
-                    Lista de Evaluación Física
-                  </label>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div className="flex items-center justify-between p-3 rounded-xl border border-slate-100 bg-slate-50/60">
-                      <span className="text-sm font-medium text-slate-700">
-                        Limpieza del Suelo
-                      </span>
-                      <span className="text-red-600 flex items-center gap-1 text-xs font-bold bg-red-50 px-2 py-0.5 rounded-md border border-red-100">
-                        <span className="material-symbols-outlined text-sm">
-                          cancel
-                        </span>{" "}
-                        Deficiente
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between p-3 rounded-xl border border-slate-100 bg-slate-50/60">
-                      <span className="text-sm font-medium text-slate-700">
-                        Funcionalidad de Iluminación
-                      </span>
-                      <span className="text-emerald-600 flex items-center gap-1 text-xs font-bold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100">
-                        <span className="material-symbols-outlined text-sm">
-                          check_circle
-                        </span>{" "}
-                        Bueno
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-8">
-                  <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
-                    Descripción Inicial del Problema
-                  </label>
-                  <div className="mt-2 p-4 bg-[#F1E9D7]/40 rounded-xl text-sm leading-relaxed border-l-4 border-l-[#CDB170] text-slate-700 italic">
-                    "{report.comments}"
-                  </div>
-                </div>
-              </div>
+          {/* FILA 1: EDIFICIO Y UBICACIÓN */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wide block mb-1">
+                Edificio
+              </label>
+              <input
+                type="text"
+                value={building}
+                onChange={(e) => setBuilding(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#002B7A] text-slate-800 font-medium"
+                required
+              />
             </div>
-
-            {/* FOTOS */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-              <h3 className="text-sm font-bold mb-4 flex items-center gap-2 text-slate-700">
-                <span className="material-symbols-outlined text-slate-400">
-                  photo_library
-                </span>
-                Evidencias Fotográficas Almacenadas
-              </h3>
-
-              {!report.images || report.images.length === 0 ? (
-                <div className="text-xs text-slate-400 italic bg-slate-50 p-4 rounded-xl text-center border border-dashed">
-                  No se han subido archivos de imagen para esta incidencia
-                  todavía.
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                  {report.images.map((img: any, idx: number) => (
-                    <div
-                      key={idx}
-                      className="group border border-slate-200 rounded-xl overflow-hidden shadow-sm bg-slate-50"
-                    >
-                      <img
-                        src={img.url}
-                        alt={img.caption || "Evidencia"}
-                        className="w-full aspect-video object-cover group-hover:scale-105 transition-transform duration-200"
-                      />
-                    </div>
-                  ))}
-                </div>
-              )}
+            <div>
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wide block mb-1">
+                Ubicación / Salón
+              </label>
+              <input
+                type="text"
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#002B7A] text-slate-800 font-medium"
+                required
+              />
             </div>
           </div>
 
-          {/* CHAT BITACORA */}
-          <div className="space-y-6">
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-120">
-              <div className="p-4 bg-slate-50 border-b border-slate-200">
-                <h3 className="font-bold text-sm text-[#002B7A] flex items-center gap-2">
-                  <span className="material-symbols-outlined text-lg">
-                    forum
-                  </span>
-                  Bitácora de Seguimiento (Chat)
-                </h3>
-              </div>
+          {/* TIPO DE ESPACIO */}
+          <div>
+            <label className="text-xs font-bold text-slate-500 uppercase tracking-wide block mb-1">
+              Tipo de Espacio
+            </label>
+            <select
+              value={locationType}
+              onChange={(e) => setLocationType(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#002B7A] text-slate-800"
+            >
+              <option value="classroom">Salón de Clases</option>
+              <option value="bathroom">Sanitarios / Baños</option>
+              <option value="laboratory">Laboratorio</option>
+              <option value="cubicle">Cubículos Docentes</option>
+              <option value="auditorium">
+                Auditorio / Sala de Usos Múltiples
+              </option>
+            </select>
+          </div>
 
-              <div className="p-4 flex-1 overflow-y-auto space-y-4 bg-slate-50/30">
-                {comments.map((comment) => (
-                  <div
-                    key={comment.id}
-                    className="bg-white p-3 rounded-xl border border-slate-150 shadow-sm space-y-1"
-                  >
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs font-bold text-[#002B7A]">
-                        {comment.user}
-                      </span>
-                      <span className="text-[10px] text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded font-bold uppercase">
-                        {comment.role}
-                      </span>
-                    </div>
-                    <p className="text-sm text-slate-700 leading-snug">
-                      {comment.text}
-                    </p>
-                    <p className="text-[9px] text-slate-400 text-right font-medium">
-                      {comment.date}
-                    </p>
-                  </div>
-                ))}
-              </div>
-
-              <form
-                onSubmit={handleSendComment}
-                className="p-3 border-t border-slate-200 bg-white flex gap-2 items-center"
+          {/* EVALUACIONES DE ESTRELLAS HOMOLOGADAS */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wide block mb-1">
+                Limpieza del Suelo
+              </label>
+              <select
+                value={floorCleaning}
+                onChange={(e) => setFloorCleaning(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#002B7A] text-slate-800"
               >
-                <input
-                  type="text"
-                  value={newComment}
-                  onChange={(e) => setNewComment(e.target.value)}
-                  placeholder="Escribe un avance o instrucción..."
-                  className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#002B7A] focus:border-transparent text-gray-800"
+                <option value="5">Limpio / Adecuado (5 ★)</option>
+                <option value="3">Regular / Requiere Atención (3 ★)</option>
+                <option value="1">Deficiente / Sucio (1 ★)</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wide block mb-1">
+                Iluminación
+              </label>
+              <select
+                value={lightingStatus}
+                onChange={(e) => setLightingStatus(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#002B7A] text-slate-800"
+              >
+                <option value="5">Funcional (5 ★)</option>
+                <option value="3">Parcialmente Fundido (3 ★)</option>
+                <option value="1">Inoperante / Sin Luz (1 ★)</option>
+              </select>
+            </div>
+          </div>
+
+          {/* CONTROL OPERATIVO Y ASIGNACIÓN */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t pt-4">
+            <div>
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wide block mb-1">
+                Estado Operativo
+              </label>
+              <select
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#002B7A] text-slate-800"
+              >
+                <option value="pending">Acción Pendiente</option>
+                <option value="assigned">Asignado al Técnico</option>
+                <option value="in_progress">En Curso / Reparación</option>
+                <option value="completed">Completado / Atendido</option>
+                <option value="cancelled">Cancelado</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wide block mb-1">
+                Asignación de Personal
+              </label>
+              <select
+                value={assignedTechId}
+                onChange={(e) => setAssignedTechId(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#002B7A] text-slate-800"
+              >
+                <option value="unassigned">
+                  Dejar pendiente (Sin asignar)
+                </option>
+                {technicians.map((tech) => (
+                  <option key={tech.id} value={tech.id}>
+                    {tech.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* DESCRIPCIÓN DEL PROBLEMA */}
+          <div>
+            <label className="text-xs font-bold text-slate-500 uppercase tracking-wide block mb-1">
+              Descripción del Problema
+            </label>
+            <textarea
+              value={comments}
+              onChange={(e) => setComments(e.target.value)}
+              rows={4}
+              placeholder="Detalla la incidencia aquí..."
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#002B7A] text-slate-800"
+            />
+          </div>
+
+          {/* CONTROL FOTOGRÁFICO */}
+          <div className="border-t pt-4">
+            <label className="text-xs font-bold text-slate-500 uppercase tracking-wide block mb-2">
+              Evidencia Fotográfica de Soporte
+            </label>
+
+            {!deleteExistingPhoto && existingImages.length > 0 && (
+              <div className="relative w-full max-w-xs border rounded-xl overflow-hidden bg-slate-100 mb-4 group">
+                <img
+                  src={existingImages[0].url}
+                  alt="Evidencia actual"
+                  className="w-full aspect-video object-cover"
                 />
                 <button
-                  type="submit"
-                  className="bg-[#002B7A] hover:bg-[#CDB170] text-white hover:text-[#002B7A] p-2 rounded-xl transition-all flex items-center justify-center shadow-sm"
+                  type="button"
+                  onClick={handleRemoveExistingPhoto}
+                  className="absolute top-2 right-2 bg-red-600 hover:bg-red-700 text-white p-1.5 rounded-xl shadow-md transition-colors cursor-pointer"
+                  title="Eliminar foto actual"
                 >
                   <span className="material-symbols-outlined text-sm font-bold">
-                    send
+                    delete
                   </span>
                 </button>
-              </form>
-            </div>
+              </div>
+            )}
+
+            {previewUrl && (
+              <div className="relative w-full max-w-xs border border-amber-300 rounded-xl overflow-hidden bg-slate-100 mb-4">
+                <img
+                  src={previewUrl}
+                  alt="Vista previa"
+                  className="w-full aspect-video object-cover"
+                />
+                <button
+                  type="button"
+                  onClick={handleRemoveExistingPhoto}
+                  className="absolute top-2 right-2 bg-gray-700 text-white p-1.5 rounded-xl shadow-md cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-sm">
+                    close
+                  </span>
+                </button>
+              </div>
+            )}
+
+            {(deleteExistingPhoto || existingImages.length === 0) &&
+              !previewUrl && (
+                <div className="flex items-center justify-center w-full">
+                  <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-slate-300 border-dashed rounded-xl cursor-pointer bg-slate-50 hover:bg-slate-100 transition-colors">
+                    <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                      <span className="material-symbols-outlined text-slate-400 mb-1">
+                        add_a_photo
+                      </span>
+                      <p className="text-xs text-slate-500 font-bold">
+                        Cargar evidencia fotográfica
+                      </p>
+                      <p className="text-[10px] text-slate-400">
+                        PNG, JPG o JPEG
+                      </p>
+                    </div>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleFileChange}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+              )}
           </div>
-        </div>
+
+          {/* BOTONES */}
+          <div className="flex items-center gap-3 pt-4 border-t">
+            <button
+              type="submit"
+              disabled={saving}
+              className="flex-1 bg-[#002B7A] hover:bg-[#001F5C] text-white py-2.5 rounded-xl text-sm font-bold shadow-md transition-all disabled:opacity-50 cursor-pointer text-center"
+            >
+              {saving ? "Sincronizando..." : "Guardar Reporte"}
+            </button>
+            <Link
+              href={`/dashboard/reports/${id}`}
+              className="px-5 py-2.5 border border-slate-300 text-slate-700 font-bold rounded-xl text-sm hover:bg-slate-50 transition-all text-center"
+            >
+              Cancelar
+            </Link>
+          </div>
+        </form>
       </main>
-
-      {/* ========================================================== */}
-      {/* 🚀 MODAL FLOTANTE DE CONFIRMACIÓN EN TAILWIND CSS (ESTÉTICO) */}
-      {/* ========================================================== */}
-      {showDeleteModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in print:hidden">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full overflow-hidden p-6 space-y-4">
-            {/* Ícono de Alerta */}
-            <div className="w-12 h-12 bg-red-50 text-red-600 rounded-full flex items-center justify-center shadow-inner">
-              <span className="material-symbols-outlined text-2xl font-bold">
-                warning
-              </span>
-            </div>
-
-            {/* Encabezado */}
-            <div>
-              <h3 className="text-lg font-black text-slate-800">
-                ¿Mano, estás seguro de eliminar el reporte?
-              </h3>
-              <p className="text-sm text-slate-500 mt-1 leading-relaxed">
-                Esta acción es destructiva, eliminará permanentemente la
-                incidencia{" "}
-                <span className="font-bold text-[#002B7A]">
-                  {report?.report_number}
-                </span>{" "}
-                de la facultad y limpiará Postgres de forma física.
-              </p>
-            </div>
-
-            {/* Botones de acción del Modal */}
-            <div className="flex items-center gap-3 pt-2">
-              <button
-                type="button"
-                onClick={handleConfirmDelete}
-                disabled={deleting}
-                className="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-sm transition-all shadow-md disabled:opacity-50"
-              >
-                {deleting ? "Limpiando..." : "Sí, Eliminar de Postgres"}
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowDeleteModal(false)}
-                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-sm transition-all text-center"
-              >
-                Cancelar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

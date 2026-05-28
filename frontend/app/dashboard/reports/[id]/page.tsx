@@ -215,7 +215,8 @@ export default function ReportDetailPage({
                 </Link>
               )}
 
-              {isAdmin && (
+              {/* FIX SOLICITADO: Solo se muestra el botón eliminar si es Admin Y el reporte NO está completado */}
+              {isAdmin && !isCompleted && (
                 <button
                   onClick={() => setShowDeleteModal(true)}
                   className="flex items-center gap-2 px-3.5 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-bold shadow-sm transition-all cursor-pointer"
