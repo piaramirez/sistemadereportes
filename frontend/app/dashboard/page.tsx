@@ -58,7 +58,7 @@ export default function DashboardPage() {
       } catch (error) {
         console.error("Error al obtener los datos del Dashboard:", error);
       } finally {
-        // <-- ARREGLADO: Cambiado 'bits' por 'finally' para que compile en Next.js
+        // <-- CORREGIDO DEFINITIVAMENTE: Cambio de 'bits' por 'finally'
         setLoading(false); // Apagamos el cargador inmediatamente al terminar las peticiones
       }
     };
@@ -72,7 +72,7 @@ export default function DashboardPage() {
     window.location.href = "/login";
   };
 
-  // 1. PANTALLA DE CARGA
+  // 1. PANTALLA DE CARGA: Se ejecuta de forma limpia mientras loading sea true
   if (loading || !user) {
     return (
       <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center text-white font-sans gap-4">
@@ -136,7 +136,7 @@ export default function DashboardPage() {
             </a>
           )}
 
-          {/* SEGURIDAD DE SIDEBAR - OCULTAR GESTIÓN DE PERSONAL A TÉCNICOS E INSPECTORES */}
+          {/* REGLA: SÓLO EL ADMINISTRADOR Y EL ENCARGADO VEN LA SECCIÓN DE GESTIÓN DE PERSONAL */}
           {(isAdmin || isEncargado) && (
             <Link
               className="flex items-center gap-3 px-4 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl font-medium transition-colors"
@@ -221,7 +221,12 @@ export default function DashboardPage() {
               <h3 className="font-bold text-slate-800 text-lg">
                 Listado de Reportes de Incidencias
               </h3>
-              <button className="bg-[#002B7A] text-white px-4 py-2 rounded-xl font-bold text-sm flex items-center gap-2">
+
+              {/* ACCIÓN: BOTÓN TOTALMENTE HABILITADO Y ENRUTADO */}
+              <button
+                onClick={() => router.push("/dashboard/reports/new")}
+                className="bg-[#002B7A] hover:bg-[#CDB170] hover:text-[#002B7A] text-white px-4 py-2 rounded-xl font-bold text-sm flex items-center gap-2 transition-all shadow-sm"
+              >
                 <span className="material-symbols-outlined text-[18px]">
                   add
                 </span>
@@ -306,7 +311,7 @@ export default function DashboardPage() {
                         )}
 
                         <td className="px-6 py-4 text-right text-sm space-x-1 print:hidden">
-                          {/* ACCIÓN 1: VER DETALLE */}
+                          {/* BOTÓN 1: VISUALIZAR REPORTE */}
                           <button
                             onClick={() =>
                               router.push(`/dashboard/reports/${report.id}`)
@@ -319,7 +324,7 @@ export default function DashboardPage() {
                             </span>
                           </button>
 
-                          {/* REGLA 1: EL LÁPIZ SOLO SE MUESTRA SI NO ESTÁ COMPLETADO Y EL ROL TIENE PERMISOS */}
+                          {/* BOTÓN 2: EDITAR REPORTE (OCULTO SI EL STATUS ES COMPLETED) */}
                           {(isAdmin || isEncargado) &&
                             report.status !== "completed" && (
                               <button
