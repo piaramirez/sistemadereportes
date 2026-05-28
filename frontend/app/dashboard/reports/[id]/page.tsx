@@ -206,7 +206,7 @@ export default function ReportDetailPage({
 
               {!isCompleted && (
                 <Link
-                  href={`/dashboard/reports/${id}/edit`}
+                  href={`/dashboard/reports/${String(id)}/edit`} // <-- Forzamos el ID como string limpio
                   className="flex items-center gap-2 px-3.5 py-2 border border-amber-300 rounded-xl text-sm font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 transition-all shadow-sm"
                 >
                   <span className="material-symbols-outlined text-sm">
@@ -214,7 +214,7 @@ export default function ReportDetailPage({
                   </span>
                   Editar
                 </Link>
-              )}
+              )}0
 
               {/* BOTÓN ELIMINAR ACTUALIZADO */}
               {isAdmin && (

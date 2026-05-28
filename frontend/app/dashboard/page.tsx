@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import axios from "axios";
 
 export default function DashboardPage() {
@@ -57,6 +58,7 @@ export default function DashboardPage() {
       } catch (error) {
         console.error("Error al obtener los datos del Dashboard:", error);
       } finally {
+        // <-- ARREGLADO: Cambiado 'bits' por 'finally' para que compile en Next.js
         setLoading(false); // Apagamos el cargador inmediatamente al terminar las peticiones
       }
     };
@@ -70,7 +72,7 @@ export default function DashboardPage() {
     window.location.href = "/login";
   };
 
-  // 1. PANTALLA DE CARGA: Se ejecuta de forma limpia mientras loading sea true
+  // 1. PANTALLA DE CARGA
   if (loading || !user) {
     return (
       <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center text-white font-sans gap-4">
@@ -82,7 +84,7 @@ export default function DashboardPage() {
     );
   }
 
-  // 2. REGLAS UNAM EN MINÚSCULAS (Se ejecutan solo cuando ya tenemos al usuario cargado)
+  // 2. REGLAS UNAM EN MINÚSCULAS
   const userRole = user.role ? user.role.toLowerCase() : "";
   const isAdmin = userRole === "admin";
   const isEncargado = userRole === "coordinator";
@@ -133,14 +135,16 @@ export default function DashboardPage() {
               Edificios
             </a>
           )}
+
+          {/* SEGURIDAD DE SIDEBAR - OCULTAR GESTIÓN DE PERSONAL A TÉCNICOS E INSPECTORES */}
           {(isAdmin || isEncargado) && (
-            <a
+            <Link
               className="flex items-center gap-3 px-4 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl font-medium transition-colors"
-              href="#"
+              href="/dashboard/users"
             >
               <span className="material-symbols-outlined">group</span> Gestionar
               Personal
-            </a>
+            </Link>
           )}
         </nav>
 
@@ -252,7 +256,7 @@ export default function DashboardPage() {
                   {reports.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={6}
+                        colSpan={isAdmin ? 5 : 4}
                         className="px-6 py-8 text-center text-sm text-slate-400 font-medium"
                       >
                         No hay incidencias registradas en la base de datos.
@@ -302,6 +306,7 @@ export default function DashboardPage() {
                         )}
 
                         <td className="px-6 py-4 text-right text-sm space-x-1 print:hidden">
+                          {/* ACCIÓN 1: VER DETALLE */}
                           <button
                             onClick={() =>
                               router.push(`/dashboard/reports/${report.id}`)
@@ -314,12 +319,13 @@ export default function DashboardPage() {
                             </span>
                           </button>
 
-                          {(isAdmin || isEncargado) && (
-                            <>
+                          {/* REGLA 1: EL LÁPIZ SOLO SE MUESTRA SI NO ESTÁ COMPLETADO Y EL ROL TIENE PERMISOS */}
+                          {(isAdmin || isEncargado) &&
+                            report.status !== "completed" && (
                               <button
                                 onClick={() =>
                                   router.push(
-                                    `/dashboard/reports/${report.id}/edit`,
+                                    `/dashboard/reports/${String(report.id)}/edit`,
                                   )
                                 }
                                 className="text-amber-500 hover:text-amber-600 p-1.5 hover:bg-amber-50 rounded-lg transition-all"
@@ -329,22 +335,7 @@ export default function DashboardPage() {
                                   edit
                                 </span>
                               </button>
-
-                              <button
-                                onClick={() =>
-                                  alert(
-                                    `Abriendo asignación rápida para el reporte #${report.id}`,
-                                  )
-                                }
-                                className="text-blue-500 hover:text-blue-600 p-1.5 hover:bg-blue-50 rounded-lg transition-all"
-                                title="Asignar técnico de mantenimiento"
-                              >
-                                <span className="material-symbols-outlined text-[18px]">
-                                  assignment_turned_in
-                                </span>
-                              </button>
-                            </>
-                          )}
+                            )}
                         </td>
                       </tr>
                     ))
