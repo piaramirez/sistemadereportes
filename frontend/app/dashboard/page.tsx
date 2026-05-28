@@ -126,7 +126,7 @@ export default function DashboardPage() {
             Reportes
           </button>
 
-          {/* NUEVO BOTÓN: Espacio para la bitácora global de comentarios y asignaciones */}
+          {/* Espacio para la bitácora global de comentarios y asignaciones */}
           <button
             onClick={() =>
               alert("Módulo de Mensajes en desarrollo transicional...")
@@ -136,15 +136,17 @@ export default function DashboardPage() {
             <span className="material-symbols-outlined">forum</span> Mensajes
           </button>
 
-          {!isEmpleado && (
-            <a
-              className="flex items-center gap-3 px-4 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl font-medium transition-colors"
-              href="#"
+          {/* REPARACIÓN: Solo Admin y Coordinador/Encargado pueden gestionar e ir a infraestructura */}
+          {(isAdmin || isEncargado) && (
+            <button
+              onClick={() => router.push("/dashboard/buildings")}
+              className="flex items-center gap-3 w-full px-4 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl font-medium transition-colors text-left cursor-pointer"
             >
               <span className="material-symbols-outlined">corporate_fare</span>{" "}
               Edificios
-            </a>
+            </button>
           )}
+
           {(isAdmin || isEncargado) && (
             <a
               className="flex items-center gap-3 px-4 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl font-medium transition-colors"
@@ -329,8 +331,9 @@ export default function DashboardPage() {
                             </span>
                           </button>
 
-                          {(isAdmin || isEncargado) && (
-                            <>
+                          {/* REPARACIÓN FINAL: El lápiz se oculta si report.status === "completed" */}
+                          {(isAdmin || isEncargado) &&
+                            report.status !== "completed" && (
                               <button
                                 onClick={() =>
                                   router.push(
@@ -344,8 +347,7 @@ export default function DashboardPage() {
                                   edit
                                 </span>
                               </button>
-                            </>
-                          )}
+                            )}
                         </td>
                       </tr>
                     ))
