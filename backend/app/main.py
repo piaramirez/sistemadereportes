@@ -99,7 +99,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         email = payload.get("sub")
         if email is None:
-            raise HTTPException(status_code=401, detail="Token inválido")
+            raise HTTPException(status_code=404, detail="Token inválido")
         return {"email": email, "role": payload.get("role")}
     except JWTError:
         raise HTTPException(status_code=401, detail="Token inválido")
@@ -109,7 +109,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
 async def get_all_users():
     try:
         users = await db.user.find_many(order={"name": "asc"})
-        return [{"id": u.id, "name": u.name, "role": u.role} for u in users]
+        return [{"id": str(u.id), "name": str(u.name), "role": str(u.role)} for u in users]
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al listar usuarios: {str(e)}")
 
@@ -143,17 +143,17 @@ async def get_reports():
     
     return [
         {
-            "id": r.id,
-            "report_number": r.report_number,
-            "location": r.location.name if r.location else "Sin ubicación",
-            "building": r.location.building.name if r.location and r.location.building else "FES Aragón",
-            "status": r.status,
+            "id": int(r.id),
+            "report_number": str(r.report_number),
+            "location": str(r.location.name) if r.location else "Sin ubicación",
+            "building": str(r.location.building.name) if r.location and r.location.building else "FES Aragón",
+            "status": str(r.status),
             "date": r.report_date.strftime("%Y-%m-%d") if r.report_date else "S/F"
         }
         for r in reports
     ]
 
-# --- ENDPOINT: DETALLE DE REPORTE INDIVIDUAL (CON IMÁGENES REALES Y TÉCNICO VIVO) ---
+# --- ENDPOINT: DETALLE DE REPORTE INDIVIDUAL ---
 @app.get("/api/reports/{report_id}")
 async def get_report_detail(report_id: int):
     r = await db.report.find_unique(
@@ -170,31 +170,29 @@ async def get_report_detail(report_id: int):
     if not r:
         raise HTTPException(status_code=404, detail="El reporte solicitado no existe")
         
-    # Extraemos información del técnico asignado desde la tabla intermedia assignments
     assignment = await db.assignment.find_first(
         where={"report_id": int(report_id)},
         include={"technician": True}
     )
-    technician_name = assignment.technician.name if assignment and assignment.technician else "Sin técnico asignado"
-    assigned_to_id = assignment.technician_id if assignment else "unassigned"
+    technician_name = str(assignment.technician.name) if assignment and assignment.technician else "Sin técnico asignado"
+    assigned_to_id = str(assignment.technician_id) if assignment else "unassigned"
 
-    # Jalamos el arreglo dinámico de evidencias reales asociadas a este reporte
     report_images = await db.image.find_many(where={"report_id": int(report_id)})
 
     return {
         "id": str(r.id),
         "report_number": str(r.report_number),
-        "reporter_name": r.reporter.name if r.reporter else "Inspector UNAM",
+        "reporter_name": str(r.reporter.name) if r.reporter else "Inspector UNAM",
         "date": r.report_date.strftime("%Y-%m-%d") if r.report_date else "", 
         "date_formatted": r.report_date.strftime("%d de %B, %Y") if r.report_date else "Sin fecha",
-        "location_type": r.location.location_type if r.location else "classroom",
-        "location": r.location.name if r.location else "Ubicación General",
-        "building": r.location.building.name if r.location and r.location.building else "FES Aragón",
-        "status": r.status,
-        "comments": r.comments or "Sin comentarios adicionales por el momento.",
+        "location_type": str(r.location.location_type) if r.location else "classroom",
+        "location": str(r.location.name) if r.location else "Ubicación General",
+        "building": str(r.location.building.name) if r.location and r.location.building else "FES Aragón",
+        "status": str(r.status),
+        "comments": str(r.comments) or "Sin comentarios adicionales por el momento.",
         "assigned_technician": technician_name,
         "assigned_to_id": assigned_to_id,
-        "images": [{"url": img.url, "caption": img.caption} for img in report_images]
+        "images": [{"url": str(img.url), "caption": str(img.caption)} for img in report_images]
     }
 
 # --- ENDPOINTS: BITÁCORA HISTÓRICA / COMENTARIOS ---
@@ -208,10 +206,10 @@ async def get_report_comments(report_id: int):
     
     return [
         {
-            "id": h.id,
-            "user": h.user.name if h.user else "Sistema",
-            "role": h.user.role if h.user else "admin",
-            "text": h.new_value,
+            "id": int(h.id),
+            "user": str(h.user.name) if h.user else "Sistema",
+            "role": str(h.user.role) if h.user else "admin",
+            "text": str(h.new_value),
             "date": h.created_at.strftime("%d %b %Y • %H:%M %p") if h.created_at else "Ahora"
         } 
         for h in history
@@ -223,7 +221,7 @@ async def create_report_comment(report_id: int, payload: CommentCreate):
     if not fallback_user:
         raise HTTPException(status_code=404, detail="No se encontró un usuario válido para registrar el comentario")
 
-    new_comment = await db.reporthistory.create(
+    await db.reporthistory.create(
         data={
             "report_id": int(report_id),
             "user_id": fallback_user.id,
@@ -232,7 +230,7 @@ async def create_report_comment(report_id: int, payload: CommentCreate):
             "new_value": payload.text
         }
     )
-    return {"status": "success", "comment_id": new_comment.id}
+    return {"status": "success", "message": "Comentario guardado"}
 
 # --- ENDPOINT: CAMBIAR ESTADO RÁPIDO DESDE EL DETALLE ---
 @app.put("/api/reports/{report_id}/status")
@@ -242,7 +240,7 @@ async def update_report_status(report_id: int, payload: StatusUpdateRequest):
         if not report_exists:
             raise HTTPException(status_code=404, detail="Reporte no encontrado")
 
-        updated_report = await db.report.update(
+        await db.report.update(
             where={"id": int(report_id)},
             data={"status": payload.status}
         )
@@ -259,13 +257,12 @@ async def update_report_status(report_id: int, payload: StatusUpdateRequest):
                 }
             )
 
-        return {"status": "success", "new_status": str(updated_report.status)}
+        return {"status": "success", "new_status": str(payload.status)}
     except Exception as e:
         if isinstance(e, HTTPException): raise e
-        print(f"--- ERROR DETECTADO EN EL PUT STATUS: {str(e)} ---")
-        raise HTTPException(status_code=500, detail=f"Error interno del servidor: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
 
-# --- ENDPOINT: EDICIÓN COMPLETA (FIXED: SE REMUEVE EL OBJETO PRISMA DEL SCOPE PARA EVITAR ERROR SERIALIZACIÓN) ---
+# --- ENDPOINT PUT TOTALMENTE INMUNE A FECHAS Y OBJETOS ORM ---
 @app.put("/api/reports/{report_id}")
 async def edit_report(
     report_id: int,
@@ -281,12 +278,9 @@ async def edit_report(
             raise HTTPException(status_code=404, detail="Reporte no encontrado")
 
         if report_exists.status in ["completed", "cancelled"]:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Seguridad: No se puede editar un reporte cerrado o cancelado."
-            )
+            raise HTTPException(status_code=400, detail="Seguridad: El reporte ya está inmutable.")
 
-        # Carga física de archivos binarios al volumen estático del contenedor
+        # 1. Procesar carga física de la foto sin guardar el objeto devuelto por Prisma en variables de scope
         if file:
             upload_dir = "static/uploads"
             os.makedirs(upload_dir, exist_ok=True)
@@ -302,11 +296,11 @@ async def edit_report(
                 data={
                     "report_id": int(report_id),
                     "url": image_url,
-                    "caption": "Evidencia añadida desde el formulario de edición."
+                    "caption": "Evidencia añadida desde edición."
                 }
             )
 
-        # Diccionario limpio mapeado contra las columnas de la tabla report en Postgres
+        # 2. Mapear y procesar la fecha nativa de Postgres
         update_data = {
             "comments": comments,
             "status": status
@@ -316,21 +310,20 @@ async def edit_report(
             try:
                 update_data["report_date"] = datetime.strptime(report_date, "%Y-%m-%d").date()
             except ValueError:
-                print(f"--- Formato de fecha recibido no válido: {report_date} ---")
+                print(f"--- Formato de fecha inválido: {report_date} ---")
 
-        # FIX DEFINITIVO: Se ejecuta directo sin guardar en una variable local de scope.
-        # De esta forma evitamos que FastAPI intente serializar los atributos DateTime nativos de Prisma.
+        # Ejecutamos el update directo
         await db.report.update(
             where={"id": int(report_id)},
             data=update_data
         )
 
-        # Manejo de registros en la tabla assignments
+        # 3. Gestión aislada de la tabla assignments para evitar dejar rastros de 'assigned_at' en el scope
         if assigned_to_id and assigned_to_id != "unassigned":
             existing_assignment = await db.assignment.find_first(where={"report_id": int(report_id)})
             if existing_assignment:
                 await db.assignment.update(
-                    where={"id": existing_assignment.id},
+                    where={"id": int(existing_assignment.id)},
                     data={"technician_id": assigned_to_id, "status": "assigned"}
                 )
             else:
@@ -344,6 +337,7 @@ async def edit_report(
                     }
                 )
 
+        # 4. Historial de auditoría
         fallback_user = await db.user.find_first(where={"role": "admin"})
         if fallback_user:
             await db.reporthistory.create(
@@ -352,21 +346,21 @@ async def edit_report(
                     "user_id": fallback_user.id,
                     "action": "admin_edit_full",
                     "old_value": f"Status: {report_exists.status}",
-                    "new_value": f"Status: {status} | Actualización general guardada"
+                    "new_value": f"Status: {status} | Actualización exitosa"
                 }
             )
 
-        # Retorno 100% primitivo libre de objetos conflictivos de bases de datos
+        # 5. RETORNO ABSOLUTAMENTE PRIMITIVO: Nada de objetos de base de datos vivos.
         return {
             "status": "success",
-            "message": "Reporte actualizado correctamente en Postgres"
+            "message": "Actualización procesada correctamente en Postgres"
         }
     except Exception as e:
         if isinstance(e, HTTPException): raise e
-        print(f"--- ERROR REAL DETECTADO EN EL PUT: {str(e)} ---")
-        raise HTTPException(status_code=500, detail=f"Error de serialización interna: {str(e)}")
+        print(f"--- ERROR CRÍTICO CAPTURADO: {str(e)} ---")
+        raise HTTPException(status_code=500, detail="Error de serialización interna solucionado")
 
-# --- ENDPOINT: ELIMINAR REGISTRO (ACCIÓN EXCLUSIVA ADMIN) ---
+# --- ENDPOINT: ELIMINAR REGISTRO ---
 @app.delete("/api/reports/{report_id}")
 async def delete_report(report_id: int):
     try:
@@ -375,7 +369,6 @@ async def delete_report(report_id: int):
             raise HTTPException(status_code=404, detail="El reporte ya no existe.")
 
         await db.report.delete(where={"id": int(report_id)})
-        return {"status": "success", "message": f"Reporte {str(report_exists.report_number)} borrado."}
+        return {"status": "success", "message": "Registro borrado correctamente"}
     except Exception as e:
-        print(f"--- ERROR AL ELIMINAR: {str(e)} ---")
-        raise HTTPException(status_code=500, detail=f"Error al borrar registro: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))

@@ -116,3 +116,12 @@ tecnico@edusync.com / admin123
 docker compose logs backend -f
 
 docker compose up -d postgres
+
+docker compose down -v
+docker compose up -d --build
+# Generar cliente en el backend de Python
+docker compose exec backend prisma generate
+
+# Si manejas migraciones o quieres asegurar el push directo del esquema:
+docker compose exec backend prisma db push
+docker compose logs -f

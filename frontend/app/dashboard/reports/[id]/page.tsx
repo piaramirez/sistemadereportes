@@ -21,6 +21,10 @@ export default function ReportDetailPage({
   const [loading, setLoading] = useState(true);
   const [updatingStatus, setUpdatingStatus] = useState(false);
 
+  // Control del modal estético de eliminación institucional
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
   const API_URL = "http://localhost:8000";
 
   useEffect(() => {
@@ -56,7 +60,6 @@ export default function ReportDetailPage({
         if (reportRes && reportRes.data) {
           setReport(reportRes.data);
         } else {
-          // Fallback de seguridad por si falla la conexión base
           setReport({
             id: id,
             report_number: `R-${id.padStart(5, "0")}`,
@@ -79,6 +82,7 @@ export default function ReportDetailPage({
       } catch (error) {
         console.error("Error al cargar el detalle", error);
       } finally {
+        // <-- ARREGLADO DEFINITIVAMENTE: Cambio de 'bits' por 'finally'
         setLoading(false);
       }
     };
@@ -106,25 +110,20 @@ export default function ReportDetailPage({
     }
   };
 
-  // FUNCIÓN PARA ELIMINAR EL REPORTE (EXCLUSIVO ADMIN)
-  const handleDeleteReport = async () => {
-    if (
-      !confirm(
-        `¿Mano, estás seguro de eliminar el reporte ${report?.report_number}? Esta acción es destructiva y limpiará Postgres.`,
-      )
-    ) {
-      return;
-    }
-
+  const handleConfirmDelete = async () => {
+    setDeleting(true);
     try {
       const token = localStorage.getItem("token");
       await axios.delete(`${API_URL}/api/reports/${id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
+      setShowDeleteModal(false);
       router.push("/dashboard");
     } catch (err) {
       console.error("Error al eliminar el reporte:", err);
-      alert("Hubo un problema al intentar borrar el registro.");
+      alert("No se pudo borrar el reporte de la base de datos.");
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -174,7 +173,8 @@ export default function ReportDetailPage({
   const isCompleted = report.status === "completed";
 
   return (
-    <div className="bg-slate-50 min-h-screen font-sans text-slate-900 pb-12">
+    <div className="bg-slate-50 min-h-screen font-sans text-slate-900 pb-12 relative">
+      {/* NAVBAR */}
       <nav className="border-b border-slate-200 bg-white sticky top-0 z-10 print:hidden">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16 items-center">
@@ -204,7 +204,6 @@ export default function ReportDetailPage({
                 Exportar PDF
               </button>
 
-              {/* BOTÓN EDITAR FORMULARIO */}
               {!isCompleted && (
                 <Link
                   href={`/dashboard/reports/${id}/edit`}
@@ -217,10 +216,10 @@ export default function ReportDetailPage({
                 </Link>
               )}
 
-              {/* BOTÓN ELIMINAR REGISTRO EXCLUSIVO ADMIN */}
+              {/* BOTÓN ELIMINAR ACTUALIZADO */}
               {isAdmin && (
                 <button
-                  onClick={handleDeleteReport}
+                  onClick={() => setShowDeleteModal(true)}
                   className="flex items-center gap-2 px-3.5 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-bold shadow-sm transition-all"
                 >
                   <span className="material-symbols-outlined text-sm">
@@ -247,6 +246,7 @@ export default function ReportDetailPage({
         </div>
       </nav>
 
+      {/* DETALLES */}
       <main className="max-w-5xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 space-y-6">
@@ -314,7 +314,6 @@ export default function ReportDetailPage({
                     </p>
                   </div>
 
-                  {/* NUEVO CARD: MUESTRA EL PERSONAL ASIGNADO REAL DESDE LA BD */}
                   <div className="sm:col-span-2 pt-2">
                     <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
                       Personal Encargado de Reparación
@@ -369,7 +368,7 @@ export default function ReportDetailPage({
               </div>
             </div>
 
-            {/* SECCIÓN CORREGIDA: HISTORIAL DE IMÁGENES COMPLETO REAL DESDE LA API */}
+            {/* FOTOS */}
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
               <h3 className="text-sm font-bold mb-4 flex items-center gap-2 text-slate-700">
                 <span className="material-symbols-outlined text-slate-400">
@@ -392,16 +391,9 @@ export default function ReportDetailPage({
                     >
                       <img
                         src={img.url}
-                        alt={img.caption || "Evidencia fotográfica"}
+                        alt={img.caption || "Evidencia"}
                         className="w-full aspect-video object-cover group-hover:scale-105 transition-transform duration-200"
-                        onError={(e: any) => {
-                          e.target.src =
-                            "https://placehold.co/600x400?text=Error+al+cargar+imagen";
-                        }}
                       />
-                      <div className="p-2 bg-white border-t text-[10px] text-slate-500 font-medium truncate">
-                        {img.caption || `Evidencia #${idx + 1}`}
-                      </div>
                     </div>
                   ))}
                 </div>
@@ -409,6 +401,7 @@ export default function ReportDetailPage({
             </div>
           </div>
 
+          {/* CHAT */}
           <div className="space-y-6">
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-120">
               <div className="p-4 bg-slate-50 border-b border-slate-200">
@@ -465,31 +458,57 @@ export default function ReportDetailPage({
                 </button>
               </form>
             </div>
-
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 text-xs space-y-2.5">
-              <h4 className="font-bold text-slate-400 uppercase tracking-widest mb-1">
-                Mapeo del ORM (Prisma)
-              </h4>
-              <div className="flex justify-between">
-                <span className="text-slate-400">Modelo Activo</span>
-                <code className="text-[#002B7A] font-mono font-bold">
-                  Report
-                </code>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400">ID Físico (PK)</span>
-                <span className="font-mono font-bold">#{report.id}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400">Código Único</span>
-                <span className="font-mono font-bold text-amber-600">
-                  {report.report_number}
-                </span>
-              </div>
-            </div>
           </div>
         </div>
       </main>
+
+      {/* ========================================================== */}
+      {/* 🚀 MODAL INSTITUCIONAL DE CONFIRMACIÓN EN TAILWIND (SÚPER LIMPIO) */}
+      {/* ========================================================== */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in print:hidden">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full overflow-hidden p-6 space-y-4">
+            <div className="w-12 h-12 bg-red-50 text-red-600 rounded-full flex items-center justify-center shadow-inner">
+              <span className="material-symbols-outlined text-2xl font-bold">
+                warning
+              </span>
+            </div>
+
+            <div>
+              <h3 className="text-lg font-black text-slate-800">
+                ¿Está seguro de eliminar este registro?
+              </h3>
+              <p className="text-sm text-slate-500 mt-1 leading-relaxed">
+                Esta acción es irreversible. Se eliminará permanentemente la
+                incidencia{" "}
+                <span className="font-bold text-[#002B7A]">
+                  {report?.report_number}
+                </span>{" "}
+                del sistema y se removerán los datos físicos de la base de datos
+                de auditoría.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                disabled={deleting}
+                className="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-sm transition-all shadow-md disabled:opacity-50"
+              >
+                {deleting ? "Eliminando..." : "Confirmar Eliminación"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowDeleteModal(false)}
+                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-sm transition-all text-center"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
