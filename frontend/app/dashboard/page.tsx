@@ -217,7 +217,10 @@ export default function DashboardPage() {
               <h3 className="font-bold text-slate-800 text-lg">
                 Listado de Reportes de Incidencias
               </h3>
-              <button className="bg-[#002B7A] text-white px-4 py-2 rounded-xl font-bold text-sm flex items-center gap-2">
+              <button
+                onClick={() => router.push("/dashboard/reports")}
+                className="bg-[#002B7A] text-white px-4 py-2 rounded-xl font-bold text-sm flex items-center gap-2 hover:bg-[#001F5C] transition-colors"
+              >
                 <span className="material-symbols-outlined text-[18px]">
                   add
                 </span>
