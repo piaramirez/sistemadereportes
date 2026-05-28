@@ -48,17 +48,16 @@ export default function ReportDetailPage({
       try {
         const headers = { Authorization: `Bearer ${token}` };
 
-        const [reportRes, commentsRes] = await Promise.all([
-          axios
-            .get(`${API_URL}/api/reports/${id}`, { headers })
-            .catch(() => null),
-          axios
-            .get(`${API_URL}/api/reports/${id}/comments`, { headers })
-            .catch(() => null),
-        ]);
+        const reportRes = await axios
+          .get(`${API_URL}/api/reports/${id}`, { headers })
+          .catch(() => null);
 
         if (reportRes && reportRes.data) {
           setReport(reportRes.data);
+          // Inyectamos los comentarios del chat que vienen integrados en la respuesta optimizada
+          if (reportRes.data.chat_comments) {
+            setComments(reportRes.data.chat_comments);
+          }
         } else {
           setReport({
             id: id,
@@ -75,14 +74,9 @@ export default function ReportDetailPage({
             images: [],
           });
         }
-
-        if (commentsRes && commentsRes.data) {
-          setComments(commentsRes.data);
-        }
       } catch (error) {
         console.error("Error al cargar el detalle", error);
       } finally {
-        // <-- ARREGLADO DEFINITIVAMENTE: Cambio de 'bits' por 'finally'
         setLoading(false);
       }
     };
@@ -132,25 +126,30 @@ export default function ReportDetailPage({
     if (!newComment.trim()) return;
 
     const token = localStorage.getItem("token");
+
+    // Estado optimista en la UI con la estructura exacta del backend
     const freshComment = {
       id: comments.length + 1,
-      user: user.name,
-      role: user.role,
-      text: newComment,
-      date: "Ahora mismo",
+      user_name: user.name,
+      user_role: user.role,
+      comment: newComment,
+      created_at: "Ahora mismo",
     };
+
     setComments([...comments, freshComment]);
     const commentTextTemp = newComment;
     setNewComment("");
 
     try {
+      // CORRECCIÓN CLAVE: El backend recibe 'comment', no 'text'
       await axios.post(
         `${API_URL}/api/reports/${id}/comments`,
-        { text: commentTextTemp },
+        { comment: commentTextTemp },
         { headers: { Authorization: `Bearer ${token}` } },
       );
     } catch (err) {
       console.error("Error guardando el comentario:", err);
+      alert("No se pudo sincronizar el comentario con el backend.");
     }
   };
 
@@ -196,7 +195,7 @@ export default function ReportDetailPage({
             <div className="flex items-center gap-2">
               <button
                 onClick={handleExportPDF}
-                className="flex items-center gap-2 px-3.5 py-2 border border-slate-300 rounded-xl text-sm font-bold text-slate-700 bg-white hover:bg-slate-50 transition-all shadow-sm"
+                className="flex items-center gap-2 px-3.5 py-2 border border-slate-300 rounded-xl text-sm font-bold text-slate-700 bg-white hover:bg-slate-50 transition-all shadow-sm cursor-pointer"
               >
                 <span className="material-symbols-outlined text-sm text-[#002B7A]">
                   picture_as_pdf
@@ -206,7 +205,7 @@ export default function ReportDetailPage({
 
               {!isCompleted && (
                 <Link
-                  href={`/dashboard/reports/${String(id)}/edit`} // <-- Forzamos el ID como string limpio
+                  href={`/dashboard/reports/${String(id)}/edit`}
                   className="flex items-center gap-2 px-3.5 py-2 border border-amber-300 rounded-xl text-sm font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 transition-all shadow-sm"
                 >
                   <span className="material-symbols-outlined text-sm">
@@ -214,13 +213,12 @@ export default function ReportDetailPage({
                   </span>
                   Editar
                 </Link>
-              )}0
+              )}
 
-              {/* BOTÓN ELIMINAR ACTUALIZADO */}
               {isAdmin && (
                 <button
                   onClick={() => setShowDeleteModal(true)}
-                  className="flex items-center gap-2 px-3.5 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-bold shadow-sm transition-all"
+                  className="flex items-center gap-2 px-3.5 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-bold shadow-sm transition-all cursor-pointer"
                 >
                   <span className="material-symbols-outlined text-sm">
                     delete
@@ -233,7 +231,7 @@ export default function ReportDetailPage({
                 <button
                   onClick={handleMarkAsCompleted}
                   disabled={updatingStatus}
-                  className="flex items-center gap-2 px-4 py-2 bg-[#002B7A] hover:bg-[#CDB170] text-white hover:text-[#002B7A] rounded-xl text-sm font-bold shadow-sm transition-all disabled:opacity-50"
+                  className="flex items-center gap-2 px-4 py-2 bg-[#002B7A] hover:bg-[#CDB170] text-white hover:text-[#002B7A] rounded-xl text-sm font-bold shadow-sm transition-all disabled:opacity-50 cursor-pointer"
                 >
                   <span className="material-symbols-outlined text-sm">
                     {updatingStatus ? "sync" : "check_circle"}
@@ -414,24 +412,24 @@ export default function ReportDetailPage({
               </div>
 
               <div className="p-4 flex-1 overflow-y-auto space-y-4 bg-slate-50/30">
-                {comments.map((comment) => (
+                {comments.map((comment, index) => (
                   <div
-                    key={comment.id}
+                    key={comment.id || index}
                     className="bg-white p-3 rounded-xl border border-slate-150 shadow-sm space-y-1"
                   >
                     <div className="flex justify-between items-center">
                       <span className="text-xs font-bold text-[#002B7A]">
-                        {comment.user}
+                        {comment.user_name}
                       </span>
                       <span className="text-[10px] text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded font-bold uppercase">
-                        {comment.role}
+                        {comment.user_role}
                       </span>
                     </div>
                     <p className="text-sm text-slate-700 leading-snug">
-                      {comment.text}
+                      {comment.comment}
                     </p>
                     <p className="text-[9px] text-slate-400 text-right font-medium">
-                      {comment.date}
+                      {comment.created_at}
                     </p>
                   </div>
                 ))}
@@ -450,7 +448,7 @@ export default function ReportDetailPage({
                 />
                 <button
                   type="submit"
-                  className="bg-[#002B7A] hover:bg-[#CDB170] text-white hover:text-[#002B7A] p-2 rounded-xl transition-all flex items-center justify-center shadow-sm"
+                  className="bg-[#002B7A] hover:bg-[#CDB170] text-white hover:text-[#002B7A] p-2 rounded-xl transition-all flex items-center justify-center shadow-sm cursor-pointer"
                 >
                   <span className="material-symbols-outlined text-sm font-bold">
                     send
@@ -462,9 +460,7 @@ export default function ReportDetailPage({
         </div>
       </main>
 
-      {/* ========================================================== */}
-      {/* 🚀 MODAL INSTITUCIONAL DE CONFIRMACIÓN EN TAILWIND (SÚPER LIMPIO) */}
-      {/* ========================================================== */}
+      {/* MODAL DE CONFIRMACIÓN */}
       {showDeleteModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in print:hidden">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full overflow-hidden p-6 space-y-4">
@@ -494,14 +490,14 @@ export default function ReportDetailPage({
                 type="button"
                 onClick={handleConfirmDelete}
                 disabled={deleting}
-                className="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-sm transition-all shadow-md disabled:opacity-50"
+                className="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-sm transition-all shadow-md disabled:opacity-50 cursor-pointer"
               >
                 {deleting ? "Eliminando..." : "Confirmar Eliminación"}
               </button>
               <button
                 type="button"
                 onClick={() => setShowDeleteModal(false)}
-                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-sm transition-all text-center"
+                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-sm transition-all text-center cursor-pointer"
               >
                 Cancelar
               </button>

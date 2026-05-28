@@ -24,7 +24,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# REPARACIÓN AQUÍ: Validar y crear la carpeta static si no existe antes de montarla en Uvicorn
+# REPARACIÓN: Validar y crear la carpeta static si no existe antes de montarla en Uvicorn
 if not os.path.exists("static"):
     os.makedirs("static")
 
@@ -62,6 +62,10 @@ class Token(BaseModel):
 
 class StatusUpdateRequest(BaseModel):
     status: str
+
+# Esquema Pydantic para recibir interacciones del chat
+class CommentCreateRequest(BaseModel):
+    comment: str
 
 def verify_password(plain_password, hashed_password):
     return pwd_context.verify(plain_password, hashed_password)
@@ -140,6 +144,23 @@ async def get_report_detail(report_id: int):
 
     report_images = await db.image.find_many(where={"report_id": int(report_id)})
 
+    # Traer comentarios del chat de manera limpia usando la relación del esquema reporthistory
+    history_logs = await db.reporthistory.find_many(
+        where={"report_id": int(report_id), "action": "comment"},
+        include={"user": True},
+        order={"created_at": "asc"}
+    )
+    comments_list = [
+        {
+            "id": h.id,
+            "user_name": h.user.name if h.user else "Usuario UNAM",
+            "user_role": h.user.role if h.user else "user",
+            "comment": h.new_value,
+            "created_at": h.created_at.strftime("%Y-%m-%d %H:%M")
+        }
+        for h in history_logs
+    ]
+
     return {
         "id": str(r.id),
         "report_number": str(r.report_number),
@@ -153,8 +174,76 @@ async def get_report_detail(report_id: int):
         "comments": str(r.comments) or "Sin comentarios adicionales por el momento.",
         "assigned_technician": technician_name,
         "assigned_to_id": assigned_to_id,
-        "images": [{"url": str(img.url), "caption": str(img.caption)} for img in report_images]
+        "images": [{"url": str(img.url), "caption": str(img.caption)} for img in report_images],
+        "chat_comments": comments_list
     }
+
+# NUEVO ENDPOINT FIX: Guardar comentarios y lanzar notificaciones con sintaxis estricta de Prisma + Logs de diagnóstico forzados
+@app.post("/api/reports/{report_id}/comments")
+async def add_report_comment(report_id: int, payload: CommentCreateRequest, token: str = Depends(oauth2_scheme)):
+    try:
+        user_data = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        current_user = await db.user.find_unique(where={"email": user_data.get("sub")})
+        
+        if not current_user:
+            raise HTTPException(status_code=404, detail="Usuario no autenticado")
+
+        report_exists = await db.report.find_unique(where={"id": int(report_id)})
+        if not report_exists:
+            raise HTTPException(status_code=404, detail="El reporte no existe")
+
+        # 1. Guardar el comentario usando la relación explícita 'connect' para evitar error 500
+        new_comment_log = await db.reporthistory.create(
+            data={
+                "report": {"connect": {"id": int(report_id)}},
+                "user": {"connect": {"id": current_user.id}},
+                "action": "comment",
+                "old_value": "chat_interaction",
+                "new_value": payload.comment
+            }
+        )
+
+        # 2. LÓGICA DE NOTIFICACIONES INTELIGENTES INSTITUCIONALES
+        assignment = await db.assignment.find_first(where={"report_id": int(report_id)})
+        
+        target_user_id = None
+        notify_message = f"Nuevo comentario de {current_user.name} en el reporte {report_exists.report_number}"
+
+        if assignment:
+            # Si escribe el técnico asignado, se le notifica al inspector que reportó
+            if str(current_user.id) == str(assignment.technician_id):
+                target_user_id = report_exists.reporter_id
+            else:
+                # Si escribe un admin/coordinador, se le avisa al técnico
+                target_user_id = assignment.technician_id
+        else:
+            # Si no hay nadie asignado aún y comenta un admin, le avisa al inspector
+            if str(current_user.id) != str(report_exists.reporter_id):
+                target_user_id = report_exists.reporter_id
+
+        # Insertar notificación usando conexiones seguras del ORM
+        if target_user_id:
+            await db.notification.create(
+                data={
+                    "user": {"connect": {"id": target_user_id}},
+                    "report": {"connect": {"id": int(report_id)}},
+                    "type": "comment",
+                    "message": notify_message,
+                    "is_read": False
+                }
+            )
+
+        return {"status": "success", "message": "Comentario guardado y usuario notificado."}
+
+    except Exception as e:
+        # 🚨 MENSAJE DE DIAGNÓSTICO EN TERMINAL DOCKER: Revela el truene real interno
+        print("\n" + "💥"*20)
+        print("ERROR CRÍTICO DETECTADO EN /comments ENDPOINT:")
+        print(repr(e))
+        print("💥"*20 + "\n")
+        
+        if isinstance(e, HTTPException): raise e
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.put("/api/reports/{report_id}/status")
 async def update_report_status(report_id: int, payload: StatusUpdateRequest, token: str = Depends(oauth2_scheme)):
@@ -175,15 +264,32 @@ async def update_report_status(report_id: int, payload: StatusUpdateRequest, tok
         if current_user:
             await db.reporthistory.create(
                 data={
-                    "report_id": int(report_id), 
-                    "user_id": current_user.id, 
-                    "action": "status_change", 
+                    "report": {"connect": {"id": int(report_id)}},
+                    "user": {"connect": {"id": current_user.id}},
+                    "action": "status_change",
                     "old_value": report_exists.status or "pending", 
                     "new_value": payload.status
                 }
             )
+            
+            # Notificación de actualización de estatus al creador del reporte
+            if report_exists.reporter_id and str(current_user.id) != str(report_exists.reporter_id):
+                await db.notification.create(
+                    data={
+                        "user": {"connect": {"id": report_exists.reporter_id}},
+                        "report": {"connect": {"id": int(report_id)}},
+                        "type": "status_change",
+                        "message": f"El estado del reporte {report_exists.report_number} cambió a: {payload.status}",
+                        "is_read": False
+                    }
+                )
+                
         return {"status": "success", "new_status": str(payload.status)}
     except Exception as e:
+        print("\n" + "⚠️"*20)
+        print("ERROR CRÍTICO DETECTADO EN /status ENDPOINT:")
+        print(repr(e))
+        print("⚠️"*20 + "\n")
         if isinstance(e, HTTPException): raise e
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -244,6 +350,7 @@ async def create_report(
                 }
             )
         except Exception as err_report:
+            print(f"Fallo al registrar reporte: {str(err_report)}")
             raise HTTPException(status_code=500, detail=f"Fallo al registrar reporte: {str(err_report)}")
 
         # 2. Evaluaciones físicas
@@ -255,9 +362,10 @@ async def create_report(
                 data={"report": {"connect": {"id": new_report.id}}, "criteria_name": "Funcionalidad de Iluminación", "rating": 5 if lighting_status == "bueno" else 1}
             )
         except Exception as err_eval:
+            print(f"Fallo en criterios de evaluación: {str(err_eval)}")
             raise HTTPException(status_code=500, detail=f"Fallo en criterios de evaluación: {str(err_eval)}")
 
-        # 3. Asignación técnica inmediata
+        # 3. Asignación técnica inmediata + Notificación de asignación
         if assigned_to_id and assigned_to_id != "unassigned":
             try:
                 tech_uuid = str(uuid.UUID(assigned_to_id))
@@ -269,8 +377,19 @@ async def create_report(
                         "status": "assigned"
                     }
                 )
-            except (ValueError, Exception):
-                print("--- Error omitido en asignación relacional ---")
+                
+                # Crear la notificación para el técnico asignado
+                await db.notification.create(
+                    data={
+                        "user": {"connect": {"id": tech_uuid}},
+                        "report": {"connect": {"id": new_report.id}},
+                        "type": "assignment",
+                        "message": f"Se te ha asignado un nuevo reporte de mantenimiento: {generated_number}",
+                        "is_read": False
+                    }
+                )
+            except (ValueError, Exception) as err_assign:
+                print(f"--- Error omitido en asignación relacional: {str(err_assign)} ---")
 
         # 4. Guardado de archivos físicos e imágenes
         if file:
@@ -283,7 +402,6 @@ async def create_report(
                 with open(file_path, "wb") as buffer:
                     buffer.write(await file.read())
                 
-                # Guardamos la URL estática absoluta que leerá el navegador
                 await db.image.create(
                     data={
                         "report": {"connect": {"id": new_report.id}},
@@ -310,5 +428,9 @@ async def create_report(
         return {"status": "success", "report_number": str(generated_number)}
 
     except Exception as e:
+        print("\n" + "🛑"*20)
+        print("ERROR CRÍTICO DETECTADO EN POST /reports:")
+        print(repr(e))
+        print("🛑"*20 + "\n")
         if isinstance(e, HTTPException): raise e
         raise HTTPException(status_code=500, detail="Error relacional interno")
