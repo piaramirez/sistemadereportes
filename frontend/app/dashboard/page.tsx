@@ -117,13 +117,13 @@ export default function DashboardPage() {
             <span className="material-symbols-outlined">dashboard</span> Panel
             Principal
           </a>
-          <a
-            className="flex items-center gap-3 px-4 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl font-medium transition-colors"
-            href="#"
+          <button
+            onClick={() => router.push("/dashboard/reports")}
+            className="flex items-center gap-3 w-full px-4 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl font-medium transition-colors text-left cursor-pointer"
           >
             <span className="material-symbols-outlined">description</span>{" "}
             Reportes
-          </a>
+          </button>
           {!isEmpleado && (
             <a
               className="flex items-center gap-3 px-4 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl font-medium transition-colors"
