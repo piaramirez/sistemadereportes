@@ -29,6 +29,13 @@ export default function NewReport() {
 
   // Cargar técnicos disponibles al montar el componente
   useEffect(() => {
+    // Cargar dinámicamente los iconos por si acaso se usan en el dashboard
+    const link = document.createElement("link");
+    link.href =
+      "https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap";
+    link.rel = "stylesheet";
+    document.head.appendChild(link);
+
     const token = localStorage.getItem("token");
     fetch("http://localhost:8000/api/users", {
       headers: { Authorization: `Bearer ${token}` },
@@ -107,167 +114,214 @@ export default function NewReport() {
   };
 
   return (
-    <div className="max-w-2xl mx-auto p-6 bg-white rounded-lg shadow-md mt-10">
-      <h2 className="text-2xl font-bold mb-6 text-gray-800">
-        Levantar Nuevo Reporte - UNAM
-      </h2>
+    <div className="min-h-screen bg-slate-50 py-10 px-4 font-sans">
+      <div className="max-w-2xl mx-auto">
+        {/* Botón de Regresar Profesional */}
+        <button
+          type="button"
+          onClick={() => router.push("/dashboard")}
+          className="mb-5 flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-[#002B7A] transition-colors group cursor-pointer"
+        >
+          <span className="material-symbols-outlined text-[20px] transition-transform group-hover:-translate-x-1">
+            arrow_back
+          </span>
+          Volver al Panel Principal
+        </button>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
-        {/* Infraestructura */}
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700">
-              Edificio
-            </label>
-            <input
-              type="text"
-              name="building_name"
-              value={formData.building_name}
-              onChange={handleChange}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 bg-gray-50"
-              required
-            />
+        {/* Contenedor del Formulario */}
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          {/* Encabezado Institucional */}
+          <div className="p-6 bg-white border-b border-slate-100 flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-bold text-[#002B7A]">
+                Levantar Nuevo Reporte
+              </h2>
+              <p className="text-xs font-bold text-[#CDB170] uppercase tracking-wider mt-0.5">
+                Sistema de Monitoreo FES Aragón UNAM
+              </p>
+            </div>
+            <div className="bg-[#002B7A]/5 p-2 rounded-xl">
+              <span className="material-symbols-outlined text-[#002B7A] text-2xl block">
+                assignment_add
+              </span>
+            </div>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700">
-              Ubicación / Salón
-            </label>
-            <input
-              type="text"
-              name="classroom_name"
-              value={formData.classroom_name}
-              onChange={handleChange}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 bg-gray-50"
-              required
-            />
-          </div>
-        </div>
 
-        {/* Tipo de Área */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700">
-            Tipo de Espacio
-          </label>
-          <select
-            name="location_type"
-            value={formData.location_type}
-            onChange={handleChange}
-            className="mt-1 block w-full rounded-md p-2 border bg-white"
-          >
-            <option value="classroom">Salón de Clases</option>
-            <option value="bathroom">Baños</option>
-            <option value="common_area">Área Común</option>
-            <option value="lab">Laboratorio</option>
-            <option value="office">Oficina</option>
-          </select>
-        </div>
+          <form onSubmit={handleSubmit} className="p-6 space-y-5">
+            {/* Infraestructura */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-600 uppercase tracking-wide mb-1.5">
+                  Edificio
+                </label>
+                <input
+                  type="text"
+                  name="building_name"
+                  value={formData.building_name}
+                  onChange={handleChange}
+                  className="block w-full rounded-xl border border-slate-200 p-2.5 bg-slate-50 text-sm focus:outline-none focus:border-[#002B7A] focus:bg-white transition-all text-slate-800"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-600 uppercase tracking-wide mb-1.5">
+                  Ubicación / Salón
+                </label>
+                <input
+                  type="text"
+                  name="classroom_name"
+                  value={formData.classroom_name}
+                  onChange={handleChange}
+                  className="block w-full rounded-xl border border-slate-200 p-2.5 bg-slate-50 text-sm focus:outline-none focus:border-[#002B7A] focus:bg-white transition-all text-slate-800"
+                  required
+                />
+              </div>
+            </div>
 
-        {/* Evaluaciones rápidas de infraestructura */}
-        <div className="grid grid-cols-2 gap-4 border-t pt-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700">
-              Limpieza del Suelo
-            </label>
-            <select
-              name="floor_cleaning"
-              value={formData.floor_cleaning}
-              onChange={handleChange}
-              className="mt-1 block w-full rounded-md p-2 border bg-white"
-            >
-              <option value="bueno">Limpio / Adecuado (5★)</option>
-              <option value="malo">Sucio / Requiere Limpieza (1★)</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700">
-              Iluminación
-            </label>
-            <select
-              name="lighting_status"
-              value={formData.lighting_status}
-              onChange={handleChange}
-              className="mt-1 block w-full rounded-md p-2 border bg-white"
-            >
-              <option value="bueno">Funcional (5★)</option>
-              <option value="malo">Foco Fundido / Sin Luz (1★)</option>
-            </select>
-          </div>
-        </div>
+            {/* Tipo de Área */}
+            <div>
+              <label className="block text-xs font-bold text-slate-600 uppercase tracking-wide mb-1.5">
+                Tipo de Espacio
+              </label>
+              <select
+                name="location_type"
+                value={formData.location_type}
+                onChange={handleChange}
+                className="block w-full rounded-xl border border-slate-200 p-2.5 bg-white text-sm focus:outline-none focus:border-[#002B7A] transition-all text-slate-800"
+              >
+                <option value="classroom">Salón de Clases</option>
+                <option value="bathroom">Baños</option>
+                <option value="common_area">Área Común</option>
+                <option value="lab">Laboratorio</option>
+                <option value="office">Oficina</option>
+              </select>
+            </div>
 
-        {/* Asignación Inmediata de Técnico */}
-        <div className="border-t pt-4">
-          <label className="block text-sm font-medium text-purple-700 font-bold">
-            Asignación Inmediata de Personal
-          </label>
-          <select
-            name="assigned_to_id"
-            value={formData.assigned_to_id}
-            onChange={handleChange}
-            className="mt-1 block w-full rounded-md p-2 border border-purple-300 bg-white"
-          >
-            <option value="unassigned">Dejar pendiente (Sin asignar)</option>
-            {technicians.map((tech) => (
-              <option key={tech.id} value={tech.id}>
-                {tech.name} ({tech.role.toUpperCase()})
-              </option>
-            ))}
-          </select>
-        </div>
+            {/* Evaluaciones rápidas de infraestructura */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-slate-100 pt-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-600 uppercase tracking-wide mb-1.5">
+                  Limpieza del Suelo
+                </label>
+                <select
+                  name="floor_cleaning"
+                  value={formData.floor_cleaning}
+                  onChange={handleChange}
+                  className="block w-full rounded-xl border border-slate-200 p-2.5 bg-white text-sm focus:outline-none focus:border-[#002B7A] transition-all text-slate-800"
+                >
+                  <option value="bueno">Limpio / Adecuado (5★)</option>
+                  <option value="malo">Sucio / Requiere Limpieza (1★)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-600 uppercase tracking-wide mb-1.5">
+                  Iluminación
+                </label>
+                <select
+                  name="lighting_status"
+                  value={formData.lighting_status}
+                  onChange={handleChange}
+                  className="block w-full rounded-xl border border-slate-200 p-2.5 bg-white text-sm focus:outline-none focus:border-[#002B7A] transition-all text-slate-800"
+                >
+                  <option value="bueno">Funcional (5★)</option>
+                  <option value="malo">Foco Fundido / Sin Luz (1★)</option>
+                </select>
+              </div>
+            </div>
 
-        {/* Comentarios */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700">
-            Descripción del Problema
-          </label>
-          <textarea
-            name="comments"
-            value={formData.comments}
-            onChange={handleChange}
-            placeholder="asd..."
-            rows={3}
-            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
-            required
-          />
-        </div>
+            {/* Asignación Inmediata de Técnico */}
+            <div className="border-t border-slate-100 pt-4">
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5 flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#CDB170]"></span>
+                Asignación Inmediata de Personal
+              </label>
+              <select
+                name="assigned_to_id"
+                value={formData.assigned_to_id}
+                onChange={handleChange}
+                className="block w-full rounded-xl border border-[#CDB170]/40 p-2.5 bg-amber-50/20 text-sm focus:outline-none focus:border-[#002B7A] transition-all text-slate-800 font-medium"
+              >
+                <option value="unassigned">
+                  Dejar pendiente (Sin asignar)
+                </option>
+                {technicians.map((tech) => (
+                  <option key={tech.id} value={tech.id}>
+                    {tech.name} ({tech.role.toUpperCase()})
+                  </option>
+                ))}
+              </select>
+            </div>
 
-        {/* Subida de Evidencia Fotográfica */}
-        <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:bg-gray-50 cursor-pointer">
-          <label className="cursor-pointer">
-            <span className="text-blue-600 font-medium">
-              Cargar evidencia fotográfica
-            </span>
-            <input
-              type="file"
-              accept="image/*"
-              onChange={handleFileChange}
-              className="hidden"
-            />
-          </label>
-          {selectedFile && (
-            <p className="mt-2 text-sm text-green-600 bg-green-50 py-1 rounded-md font-mono">
-              {selectedFile.name}
-            </p>
-          )}
-        </div>
+            {/* Comentarios */}
+            <div>
+              <label className="block text-xs font-bold text-slate-600 uppercase tracking-wide mb-1.5">
+                Descripción del Problema
+              </label>
+              <textarea
+                name="comments"
+                value={formData.comments}
+                onChange={handleChange}
+                placeholder="Detalla la incidencia aquí..."
+                rows={3}
+                className="block w-full rounded-xl border border-slate-200 p-2.5 text-sm focus:outline-none focus:border-[#002B7A] transition-all text-slate-800 placeholder-slate-400"
+                required
+              />
+            </div>
 
-        {/* Botones de acción */}
-        <div className="flex justify-end space-x-3 pt-4">
-          <button
-            type="button"
-            onClick={() => router.push("/dashboard")}
-            className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300"
-          >
-            Cancelar
-          </button>
-          <button
-            type="submit"
-            disabled={loading}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-blue-400"
-          >
-            {loading ? "Sincronizando con Postgres..." : "Guardar Reporte"}
-          </button>
+            {/* Subida de Evidencia Fotográfica */}
+            <div className="border-2 border-dashed border-slate-200 rounded-xl p-5 text-center hover:bg-slate-50 transition-colors cursor-pointer relative group">
+              <label className="cursor-pointer flex flex-col items-center justify-center gap-1">
+                <span className="material-symbols-outlined text-slate-400 group-hover:text-[#002B7A] transition-colors text-2xl">
+                  add_a_photo
+                </span>
+                <span className="text-sm font-bold text-[#002B7A] hover:underline mt-1">
+                  Cargar evidencia fotográfica
+                </span>
+                <span className="text-xs text-slate-400">PNG, JPG o JPEG</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileChange}
+                  className="hidden"
+                />
+              </label>
+              {selectedFile && (
+                <div className="mt-3 text-xs text-emerald-700 bg-emerald-50 border border-emerald-100 px-3 py-2 rounded-xl font-mono flex items-center justify-center gap-2">
+                  <span className="material-symbols-outlined text-[16px]">
+                    check_circle
+                  </span>
+                  {selectedFile.name}
+                </div>
+              )}
+            </div>
+
+            {/* Botones de acción */}
+            <div className="flex items-center justify-end space-x-3 pt-4 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => router.push("/dashboard")}
+                className="px-5 py-2.5 border border-slate-200 text-slate-600 rounded-xl font-bold text-sm hover:bg-slate-50 transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={loading}
+                className="px-5 py-2.5 bg-[#002B7A] text-white rounded-xl font-bold text-sm hover:bg-[#001F5C] shadow-sm disabled:bg-slate-400 transition-colors cursor-pointer flex items-center gap-2"
+              >
+                {loading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    Sincronizando...
+                  </>
+                ) : (
+                  "Guardar Reporte"
+                )}
+              </button>
+            </div>
+          </form>
         </div>
-      </form>
+      </div>
     </div>
   );
 }
