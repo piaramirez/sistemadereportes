@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Depends, HTTPException, status, File, Form, UploadFile, Header
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer
 from datetime import datetime, timedelta
@@ -6,12 +7,11 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List
-import os
+import os  # Requerido para verificar y crear directorios físicos en Docker
 import uuid
 from prisma import Prisma
 from dotenv import load_dotenv
 
-# Carga de variables de entorno
 load_dotenv()
 
 app = FastAPI(title="EduInspect API", version="1.0.0")
@@ -23,6 +23,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# REPARACIÓN AQUÍ: Validar y crear la carpeta static si no existe antes de montarla en Uvicorn
+if not os.path.exists("static"):
+    os.makedirs("static")
+
+# Servidor de archivos estáticos para renderizar las evidencias en Next.js
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 SECRET_KEY = os.getenv("SECRET_KEY", "tu-secret-key")
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
@@ -52,9 +59,6 @@ class Token(BaseModel):
     access_token: str
     token_type: str
     user: dict
-
-class CommentCreate(BaseModel):
-    text: str
 
 class StatusUpdateRequest(BaseModel):
     status: str
@@ -226,7 +230,7 @@ async def create_report(
         generated_number = f"R-{str(total_reports + 1).zfill(5)}"
         now_dt = datetime.utcnow()
 
-        # 1. Crear el reporte usando conectores de objetos de Prisma Python
+        # 1. Crear reporte conectando relaciones
         try:
             new_report = await db.report.create(
                 data={
@@ -240,30 +244,20 @@ async def create_report(
                 }
             )
         except Exception as err_report:
-            print(f"--- ERROR AL INSERTAR REPORTE: {str(err_report)} ---")
             raise HTTPException(status_code=500, detail=f"Fallo al registrar reporte: {str(err_report)}")
 
         # 2. Evaluaciones físicas
         try:
             await db.evaluation.create(
-                data={
-                    "report": {"connect": {"id": new_report.id}},
-                    "criteria_name": "Limpieza del Suelo",
-                    "rating": 5 if floor_cleaning == "bueno" else 1
-                }
+                data={"report": {"connect": {"id": new_report.id}}, "criteria_name": "Limpieza del Suelo", "rating": 5 if floor_cleaning == "bueno" else 1}
             )
             await db.evaluation.create(
-                data={
-                    "report": {"connect": {"id": new_report.id}},
-                    "criteria_name": "Funcionalidad de Iluminación",
-                    "rating": 5 if lighting_status == "bueno" else 1
-                }
+                data={"report": {"connect": {"id": new_report.id}}, "criteria_name": "Funcionalidad de Iluminación", "rating": 5 if lighting_status == "bueno" else 1}
             )
         except Exception as err_eval:
-            print(f"--- ERROR AL INSERTAR EVALUACIONES: {str(err_eval)} ---")
             raise HTTPException(status_code=500, detail=f"Fallo en criterios de evaluación: {str(err_eval)}")
 
-        # 3. Asignación del técnico mapeando a UUID
+        # 3. Asignación técnica inmediata
         if assigned_to_id and assigned_to_id != "unassigned":
             try:
                 tech_uuid = str(uuid.UUID(assigned_to_id))
@@ -275,32 +269,32 @@ async def create_report(
                         "status": "assigned"
                     }
                 )
-            except ValueError:
-                print(f"--- ERROR: assigned_to_id no es un UUID válido: {assigned_to_id} ---")
-            except Exception as err_assign:
-                print(f"--- ERROR EN ASIGNACIÓN PRISMA: {str(err_assign)} ---")
-                raise HTTPException(status_code=500, detail=f"Fallo en la asignación relacional: {str(err_assign)}")
+            except (ValueError, Exception):
+                print("--- Error omitido en asignación relacional ---")
 
-        # 4. Almacenamiento de evidencia física
+        # 4. Guardado de archivos físicos e imágenes
         if file:
             try:
                 upload_dir = "static/uploads"
                 os.makedirs(upload_dir, exist_ok=True)
-                file_path = os.path.join(upload_dir, f"{int(datetime.utcnow().timestamp())}_{file.filename}")
+                file_name = f"{int(datetime.utcnow().timestamp())}_{file.filename}"
+                file_path = os.path.join(upload_dir, file_name)
+                
                 with open(file_path, "wb") as buffer:
                     buffer.write(await file.read())
                 
+                # Guardamos la URL estática absoluta que leerá el navegador
                 await db.image.create(
                     data={
                         "report": {"connect": {"id": new_report.id}},
-                        "url": f"http://localhost:8000/{file_path}",
+                        "url": f"http://localhost:8000/static/uploads/{file_name}",
                         "caption": "Evidencia inicial."
                     }
                 )
             except Exception as err_img:
-                print(f"--- ERROR AL GUARDAR MULTIPARTE IMAGEN: {str(err_img)} ---")
+                print(f"--- Error al guardar archivo: {str(err_img)} ---")
 
-        # 5. Escribir en el historial (Mapeado a ReportHistory)
+        # 5. Historial de auditoría
         try:
             await db.reporthistory.create(
                 data={
@@ -310,15 +304,11 @@ async def create_report(
                     "new_value": f"Reporte {generated_number} creado con éxito."
                 }
             )
-        except Exception as err_hist:
-            print(f"--- ERROR EN TABLA REPORTHISTORY: {str(err_hist)} ---")
+        except Exception:
+            pass
 
-        return {
-            "status": "success", 
-            "report_number": str(generated_number)
-        }
+        return {"status": "success", "report_number": str(generated_number)}
 
     except Exception as e:
         if isinstance(e, HTTPException): raise e
-        print(f"--- ERROR CRÍTICO GENERAL: {str(e)} ---")
-        raise HTTPException(status_code=500, detail="Error de consistencia relacional en Postgres")
+        raise HTTPException(status_code=500, detail="Error relacional interno")

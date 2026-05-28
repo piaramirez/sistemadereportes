@@ -1,311 +1,273 @@
-"use client";
+"use client"; // <-- REPARACIÓN AQUÍ: Esta directiva tiene que ser la línea 1 obligatoria
 
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
-import axios from "axios";
 
-export default function NewReportPage() {
+interface UserSelect {
+  id: string;
+  name: string;
+  role: string;
+}
+
+export default function NewReport() {
   const router = useRouter();
-  const [user, setUser] = useState<any>(null);
-  const [usersList, setUsersList] = useState<any[]>([]);
-  const [submitting, setSubmitting] = useState(false);
+  const [technicians, setTechnicians] = useState<UserSelect[]>([]);
+  const [loading, setLoading] = useState(false);
 
-  // Estados del formulario
-  const [locationType, setLocationType] = useState("classroom");
-  const [building, setBuilding] = useState("Edificio A4");
-  const [classroom, setClassroom] = useState("");
-  const [comments, setComments] = useState("");
-  const [assignedToId, setAssignedToId] = useState("unassigned");
-  const [imageFile, setImageFile] = useState<File | null>(null);
+  // Estado del formulario unificado
+  const [formData, setFormData] = useState({
+    location_type: "classroom",
+    building_name: "Edificio A1",
+    classroom_name: "Salón 01",
+    comments: "",
+    floor_cleaning: "bueno",
+    lighting_status: "bueno",
+    assigned_to_id: "unassigned",
+  });
 
-  // Estados de evaluación física
-  const [floorCleaning, setFloorCleaning] = useState("bueno");
-  const [lightingStatus, setLightingStatus] = useState("bueno");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
-  const API_URL = "http://localhost:8000";
-
+  // Cargar técnicos disponibles al montar el componente
   useEffect(() => {
-    const link = document.createElement("link");
-    link.href =
-      "https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap";
-    link.rel = "stylesheet";
-    document.head.appendChild(link);
-
     const token = localStorage.getItem("token");
-    const userData = localStorage.getItem("user");
-
-    if (!token || !userData) {
-      router.push("/login");
-      return;
-    }
-    setUser(JSON.parse(userData));
-
-    // Cargar la lista de técnicos desde Postgres
-    axios
-      .get(`${API_URL}/api/users`, {
-        headers: { Authorization: `Bearer ${token}` },
+    fetch("http://localhost:8000/api/users", {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((res) => res.json())
+      .then((data: UserSelect[]) => {
+        // Filtrar solo usuarios de soporte técnico
+        const techList = data.filter(
+          (u) => u.role === "technician" || u.role === "admin",
+        );
+        setTechnicians(techList);
       })
-      .then((res) => {
-        if (res.data) setUsersList(res.data);
-      })
-      .catch((err) => console.error("Error cargando personal:", err));
-  }, [router]);
+      .catch((err) => console.error("Error cargando técnicos:", err));
+  }, []);
+
+  const handleChange = (
+    e: React.ChangeEvent<
+      HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
+    >,
+  ) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      setImageFile(e.target.files[0]);
+      setSelectedFile(e.target.files[0]);
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!classroom.trim()) {
-      alert("Por favor, especifique el aula o salón.");
-      return;
-    }
+    setLoading(true);
 
     const token = localStorage.getItem("token");
     if (!token) {
-      alert("Sesión inválida.");
-      router.push("/login");
+      alert("Error al guardar: Sesión expirada o inválida");
+      setLoading(false);
       return;
     }
 
-    setSubmitting(true);
+    const dataToSend = new FormData();
+    dataToSend.append("location_type", formData.location_type);
+    dataToSend.append("building_name", formData.building_name);
+    dataToSend.append("classroom_name", formData.classroom_name);
+    dataToSend.append("comments", formData.comments);
+    dataToSend.append("floor_cleaning", formData.floor_cleaning);
+    dataToSend.append("lighting_status", formData.lighting_status);
+    dataToSend.append("assigned_to_id", formData.assigned_to_id);
+
+    if (selectedFile) {
+      dataToSend.append("file", selectedFile);
+    }
 
     try {
-      const formData = new FormData();
-      formData.append("location_type", locationType);
-      formData.append("building_name", building);
-      formData.append("classroom_name", classroom);
-      formData.append("comments", comments);
-      formData.append("floor_cleaning", floorCleaning);
-      formData.append("lighting_status", lightingStatus);
-      formData.append("assigned_to_id", assignedToId);
-
-      if (imageFile) {
-        formData.append("file", imageFile);
-      }
-
-      // CORRECCIÓN CLAVE: Pasamos el header de autorización limpio.
-      // Dejamos que Axios configure de manera automática los boundaries de multipart/form-data.
-      await axios.post(`${API_URL}/api/reports`, formData, {
+      const response = await fetch("http://localhost:8000/api/reports", {
+        method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
         },
+        body: dataToSend,
       });
 
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || "Error en el servidor Postgres");
+      }
+
+      const result = await response.json();
+      alert(`¡Reporte ${result.report_number} creado con éxito!`);
       router.push("/dashboard");
-    } catch (err: any) {
-      console.error("Error al levantar el reporte:", err.response?.data || err);
-      alert(
-        `Error al guardar: ${err.response?.data?.detail || "Error de red o sesión"}`,
-      );
+    } catch (error: any) {
+      alert(`Error al guardar: ${error.message}`);
     } finally {
-      setSubmitting(false);
+      setLoading(false);
     }
   };
 
-  if (!user) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <div className="w-10 h-10 border-4 border-[#002B7A] border-t-transparent rounded-full animate-spin"></div>
-      </div>
-    );
-  }
-
   return (
-    <div className="bg-slate-50 min-h-screen font-sans text-slate-900 pb-12">
-      <nav className="border-b border-slate-200 bg-white sticky top-0 z-10">
-        <div className="max-w-3xl mx-auto px-4 h-16 flex items-center gap-4">
-          <Link
-            href="/dashboard"
-            className="p-2 text-slate-400 hover:text-[#002B7A] transition-colors"
+    <div className="max-w-2xl mx-auto p-6 bg-white rounded-lg shadow-md mt-10">
+      <h2 className="text-2xl font-bold mb-6 text-gray-800">
+        Levantar Nuevo Reporte - UNAM
+      </h2>
+
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {/* Infraestructura */}
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              Edificio
+            </label>
+            <input
+              type="text"
+              name="building_name"
+              value={formData.building_name}
+              onChange={handleChange}
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 bg-gray-50"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              Ubicación / Salón
+            </label>
+            <input
+              type="text"
+              name="classroom_name"
+              value={formData.classroom_name}
+              onChange={handleChange}
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 bg-gray-50"
+              required
+            />
+          </div>
+        </div>
+
+        {/* Tipo de Área */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700">
+            Tipo de Espacio
+          </label>
+          <select
+            name="location_type"
+            value={formData.location_type}
+            onChange={handleChange}
+            className="mt-1 block w-full rounded-md p-2 border bg-white"
           >
-            <span className="material-symbols-outlined">arrow_back</span>
-          </Link>
-          <h1 className="text-lg font-bold text-slate-800">
-            Levantar Nueva Solicitud de Mantenimiento (Modo Admin)
-          </h1>
+            <option value="classroom">Salón de Clases</option>
+            <option value="bathroom">Baños</option>
+            <option value="common_area">Área Común</option>
+            <option value="lab">Laboratorio</option>
+            <option value="office">Oficina</option>
+          </select>
         </div>
-      </nav>
 
-      <main className="max-w-3xl mx-auto py-8 px-4">
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {/* UBICACIÓN */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                  Tipo de Área
-                </label>
-                <select
-                  value={locationType}
-                  onChange={(e) => setLocationType(e.target.value)}
-                  className="w-full rounded-xl border-slate-300 bg-slate-50 px-3 py-2 text-sm text-gray-800 font-medium"
-                >
-                  <option value="classroom">Aulas / Salones</option>
-                  <option value="laboratory">Laboratorios</option>
-                  <option value="auditorium">Auditorios</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                  Edificio
-                </label>
-                <select
-                  value={building}
-                  onChange={(e) => setBuilding(e.target.value)}
-                  className="w-full rounded-xl border-slate-300 bg-slate-50 px-3 py-2 text-sm text-gray-800 font-medium"
-                >
-                  <option value="Edificio A1">Edificio A1</option>
-                  <option value="Edificio A4">Edificio A4</option>
-                  <option value="Edificio A7">Edificio A7</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                  Aula / Salón
-                </label>
-                <input
-                  type="text"
-                  placeholder="Ej: Salón 5"
-                  value={classroom}
-                  onChange={(e) => setClassroom(e.target.value)}
-                  className="w-full rounded-xl border-slate-300 bg-slate-50 px-3 py-2 text-sm text-gray-800 font-medium outline-none"
-                  required
-                />
-              </div>
-            </div>
-
-            {/* EVALUACIONES */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="p-4 rounded-xl border bg-slate-50/50 flex flex-col gap-2">
-                <span className="text-sm font-bold text-slate-700">
-                  Limpieza del Suelo
-                </span>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setFloorCleaning("bueno")}
-                    className={`flex-1 py-1.5 rounded-lg text-xs font-bold border transition-all ${floorCleaning === "bueno" ? "bg-emerald-50 text-emerald-700 border-emerald-300" : "bg-white text-slate-500"}`}
-                  >
-                    Bueno
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFloorCleaning("deficiente")}
-                    className={`flex-1 py-1.5 rounded-lg text-xs font-bold border transition-all ${floorCleaning === "deficiente" ? "bg-red-50 text-red-700 border-red-300" : "bg-white text-slate-500"}`}
-                  >
-                    Deficiente
-                  </button>
-                </div>
-              </div>
-              <div className="p-4 rounded-xl border bg-slate-50/50 flex flex-col gap-2">
-                <span className="text-sm font-bold text-slate-700">
-                  Iluminación
-                </span>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setLightingStatus("bueno")}
-                    className={`flex-1 py-1.5 rounded-lg text-xs font-bold border transition-all ${lightingStatus === "bueno" ? "bg-emerald-50 text-emerald-700 border-emerald-300" : "bg-white text-slate-500"}`}
-                  >
-                    Bueno
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setLightingStatus("deficiente")}
-                    className={`flex-1 py-1.5 rounded-lg text-xs font-bold border transition-all ${lightingStatus === "deficiente" ? "bg-red-50 text-red-700 border-red-300" : "bg-white text-slate-500"}`}
-                  >
-                    Deficiente
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* BOX DE ASIGNACIÓN DIRECTA */}
-            <div className="p-4 rounded-xl border border-purple-200 bg-purple-50/30">
-              <label className="block text-xs font-bold text-purple-700 uppercase tracking-wider mb-2 flex items-center gap-1">
-                <span className="material-symbols-outlined text-sm">
-                  engineering
-                </span>
-                Asignación Inmediata de Personal (Privilegio Admin)
-              </label>
-              <select
-                value={assignedToId}
-                onChange={(e) => setAssignedToId(e.target.value)}
-                className="w-full rounded-xl border-purple-300 bg-white px-3 py-2.5 text-sm text-purple-900 font-bold outline-none focus:ring-2 focus:ring-purple-500"
-              >
-                <option value="unassigned">
-                  ⚠️ Guardar como Pendiente (Sin asignar técnico aún)
-                </option>
-                {usersList.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    👤 {u.name} ({u.role.toUpperCase()})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* DESCRIPCIÓN */}
-            <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                Descripción del Problema
-              </label>
-              <textarea
-                rows={3}
-                value={comments}
-                onChange={(e) => setComments(e.target.value)}
-                placeholder="Detalles observados..."
-                className="w-full rounded-xl border-slate-300 bg-slate-50 px-3 py-2 text-sm text-gray-800"
-                required
-              />
-            </div>
-
-            {/* FOTO */}
-            <div className="border-2 border-dashed rounded-2xl p-6 bg-slate-50/50 text-center">
-              <span className="material-symbols-outlined text-slate-400 text-2xl block mb-1">
-                add_a_photo
-              </span>
-              <label className="block text-sm font-bold text-[#002B7A] cursor-pointer hover:underline">
-                <span>Cargar evidencia fotográfica</span>
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleFileChange}
-                  className="hidden"
-                />
-              </label>
-              {imageFile && (
-                <div className="mt-2 bg-emerald-50 text-emerald-800 text-xs font-bold py-1 px-2 rounded-xl inline-block border border-emerald-100">
-                  {imageFile.name}
-                </div>
-              )}
-            </div>
-
-            {/* ACCIONES */}
-            <div className="flex gap-3">
-              <button
-                type="submit"
-                disabled={submitting}
-                className="flex-1 bg-[#002B7A] text-white py-3 rounded-xl font-bold text-sm hover:bg-[#CDB170] hover:text-[#002A7B] transition-all disabled:opacity-50"
-              >
-                {submitting
-                  ? "Sincronizando con Postgres..."
-                  : "Guardar y Publicar Reporte"}
-              </button>
-              <Link
-                href="/dashboard"
-                className="px-6 bg-slate-100 hover:bg-slate-200 text-slate-700 py-3 rounded-xl font-bold text-sm flex items-center justify-center"
-              >
-                Cancelar
-              </Link>
-            </div>
-          </form>
+        {/* Evaluaciones rápidas de infraestructura */}
+        <div className="grid grid-cols-2 gap-4 border-t pt-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              Limpieza del Suelo
+            </label>
+            <select
+              name="floor_cleaning"
+              value={formData.floor_cleaning}
+              onChange={handleChange}
+              className="mt-1 block w-full rounded-md p-2 border bg-white"
+            >
+              <option value="bueno">Limpio / Adecuado (5★)</option>
+              <option value="malo">Sucio / Requiere Limpieza (1★)</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              Iluminación
+            </label>
+            <select
+              name="lighting_status"
+              value={formData.lighting_status}
+              onChange={handleChange}
+              className="mt-1 block w-full rounded-md p-2 border bg-white"
+            >
+              <option value="bueno">Funcional (5★)</option>
+              <option value="malo">Foco Fundido / Sin Luz (1★)</option>
+            </select>
+          </div>
         </div>
-      </main>
+
+        {/* Asignación Inmediata de Técnico */}
+        <div className="border-t pt-4">
+          <label className="block text-sm font-medium text-purple-700 font-bold">
+            Asignación Inmediata de Personal
+          </label>
+          <select
+            name="assigned_to_id"
+            value={formData.assigned_to_id}
+            onChange={handleChange}
+            className="mt-1 block w-full rounded-md p-2 border border-purple-300 bg-white"
+          >
+            <option value="unassigned">Dejar pendiente (Sin asignar)</option>
+            {technicians.map((tech) => (
+              <option key={tech.id} value={tech.id}>
+                {tech.name} ({tech.role.toUpperCase()})
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Comentarios */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700">
+            Descripción del Problema
+          </label>
+          <textarea
+            name="comments"
+            value={formData.comments}
+            onChange={handleChange}
+            placeholder="asd..."
+            rows={3}
+            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
+            required
+          />
+        </div>
+
+        {/* Subida de Evidencia Fotográfica */}
+        <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:bg-gray-50 cursor-pointer">
+          <label className="cursor-pointer">
+            <span className="text-blue-600 font-medium">
+              Cargar evidencia fotográfica
+            </span>
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleFileChange}
+              className="hidden"
+            />
+          </label>
+          {selectedFile && (
+            <p className="mt-2 text-sm text-green-600 bg-green-50 py-1 rounded-md font-mono">
+              {selectedFile.name}
+            </p>
+          )}
+        </div>
+
+        {/* Botones de acción */}
+        <div className="flex justify-end space-x-3 pt-4">
+          <button
+            type="button"
+            onClick={() => router.push("/dashboard")}
+            className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300"
+          >
+            Cancelar
+          </button>
+          <button
+            type="submit"
+            disabled={loading}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-blue-400"
+          >
+            {loading ? "Sincronizando con Postgres..." : "Guardar Reporte"}
+          </button>
+        </div>
+      </form>
     </div>
   );
 }
