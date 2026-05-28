@@ -7,7 +7,12 @@ from passlib.context import CryptContext
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List
 import os
+import uuid
 from prisma import Prisma
+from dotenv import load_dotenv
+
+# Carga de variables de entorno
+load_dotenv()
 
 app = FastAPI(title="EduInspect API", version="1.0.0")
 
@@ -19,9 +24,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-SECRET_KEY = os.getenv("SECRET_KEY", "mi-super-secreto-cambiame-en-produccion")
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60
+SECRET_KEY = os.getenv("SECRET_KEY", "tu-secret-key")
+ALGORITHM = os.getenv("ALGORITHM", "HS256")
+try:
+    ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 30))
+except ValueError:
+    ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
@@ -74,7 +82,7 @@ async def login(login_data: LoginRequest):
     return {
         "access_token": access_token,
         "token_type": "bearer",
-        "user": {"id": user.id, "name": user.name, "email": user.email, "role": user.role}
+        "user": {"id": str(user.id), "name": user.name, "email": user.email, "role": user.role}
     }
 
 @app.get("/api/users")
@@ -144,41 +152,14 @@ async def get_report_detail(report_id: int):
         "images": [{"url": str(img.url), "caption": str(img.caption)} for img in report_images]
     }
 
-@app.get("/api/reports/{report_id}/comments")
-async def get_report_comments(report_id: int):
-    history = await db.reporthistory.find_many(
-        where={"report_id": int(report_id), "action": "comment"},
-        include={"user": True},
-        order={"created_at": "asc"}
-    )
-    return [
-        {
-            "id": int(h.id),
-            "user": str(h.user.name) if h.user else "Sistema",
-            "role": str(h.user.role) if h.user else "admin",
-            "text": str(h.new_value),
-            "date": h.created_at.strftime("%d %b %Y • %H:%M %p") if h.created_at else "Ahora"
-        } 
-        for h in history
-    ]
-
-@app.post("/api/reports/{report_id}/comments")
-async def create_report_comment(report_id: int, payload: CommentCreate):
-    fallback_user = await db.user.find_first(where={"role": "admin"})
-    if not fallback_user:
-        raise HTTPException(status_code=404, detail="No se encontró un usuario válido")
-
-    await db.reporthistory.create(
-        data={"report_id": int(report_id), "user_id": fallback_user.id, "action": "comment", "old_value": "Ninguno", "new_value": payload.text}
-    )
-    return {"status": "success", "message": "Comentario guardado"}
-
 @app.put("/api/reports/{report_id}/status")
 async def update_report_status(report_id: int, payload: StatusUpdateRequest, token: str = Depends(oauth2_scheme)):
     try:
         user_data = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        if user_data.get("role", "").lower() not in ["admin", "coordinator"]:
-            raise HTTPException(status_code=403, detail="Privilegios insuficientes.")
+        user_role = str(user_data.get("role", "")).lower()
+        
+        if user_role not in ["admin", "coordinator"]:
+            raise HTTPException(status_code=403, detail="Tu nivel de acceso no permite actualizar estados.")
 
         report_exists = await db.report.find_unique(where={"id": int(report_id)})
         if not report_exists:
@@ -189,78 +170,19 @@ async def update_report_status(report_id: int, payload: StatusUpdateRequest, tok
         current_user = await db.user.find_unique(where={"email": user_data.get("sub")})
         if current_user:
             await db.reporthistory.create(
-                data={"report_id": int(report_id), "user_id": current_user.id, "action": "status_change", "old_value": report_exists.status or "pending", "new_value": payload.status}
+                data={
+                    "report_id": int(report_id), 
+                    "user_id": current_user.id, 
+                    "action": "status_change", 
+                    "old_value": report_exists.status or "pending", 
+                    "new_value": payload.status
+                }
             )
         return {"status": "success", "new_status": str(payload.status)}
     except Exception as e:
         if isinstance(e, HTTPException): raise e
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.put("/api/reports/{report_id}")
-async def edit_report(
-    report_id: int,
-    comments: str = Form(...),
-    status: str = Form(...),
-    assigned_to_id: Optional[str] = Form(None),
-    report_date: Optional[str] = Form(None), 
-    file: Optional[UploadFile] = File(None)
-):
-    try:
-        report_exists = await db.report.find_unique(where={"id": int(report_id)})
-        if not report_exists:
-            raise HTTPException(status_code=404, detail="Reporte no encontrado")
-
-        if report_exists.status in ["completed", "cancelled"]:
-            raise HTTPException(status_code=400, detail="El reporte ya está inmutable.")
-
-        if file:
-            upload_dir = "static/uploads"
-            os.makedirs(upload_dir, exist_ok=True)
-            file_name = f"{int(datetime.utcnow().timestamp())}_{file.filename}"
-            file_path = os.path.join(upload_dir, file_name)
-            
-            with open(file_path, "wb") as buffer:
-                buffer.write(await file.read())
-            
-            await db.image.create(
-                data={"report_id": int(report_id), "url": f"http://localhost:8000/{file_path}", "caption": "Evidencia añadida desde edición."}
-            )
-
-        update_data = {"comments": comments, "status": status}
-        if report_date and report_date.strip() != "":
-            try:
-                update_data["report_date"] = datetime.strptime(report_date, "%Y-%m-%d").date()
-            except ValueError:
-                pass
-
-        await db.report.update(where={"id": int(report_id)}, data=update_data)
-
-        if assigned_to_id and assigned_to_id != "unassigned":
-            existing_assignment = await db.assignment.find_first(where={"report_id": int(report_id)})
-            if existing_assignment:
-                await db.assignment.update(where={"id": int(existing_assignment.id)}, data={"technician_id": assigned_to_id, "status": "assigned"})
-            else:
-                admin_user = await db.user.find_first(where={"role": "admin"})
-                await db.assignment.create(data={"report_id": int(report_id), "technician_id": assigned_to_id, "assigned_by": admin_user.id if admin_user else None, "status": "assigned"})
-
-        fallback_user = await db.user.find_first(where={"role": "admin"})
-        if fallback_user:
-            await db.reporthistory.create(
-                data={"report_id": int(report_id), "user_id": fallback_user.id, "action": "admin_edit_full", "old_value": f"Status: {report_exists.status}", "new_value": f"Status: {status}"}
-            )
-        return {"status": "success", "message": "Actualización procesada"}
-    except Exception as e:
-        if isinstance(e, HTTPException): raise e
-        raise HTTPException(status_code=500, detail="Error de serialización interna")
-
-@app.delete("/api/reports/{report_id}")
-async def delete_report(report_id: int):
-    try:
-        await db.report.delete(where={"id": report_id})
-        return {"status": "success"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    
 @app.post("/api/reports")
 async def create_report(
     location_type: str = Form(...),
@@ -271,11 +193,10 @@ async def create_report(
     lighting_status: str = Form(...),
     assigned_to_id: Optional[str] = Form(None), 
     file: Optional[UploadFile] = File(None),
-    authorization: Optional[str] = Header(None), # Interceptamos directo el Header
-    token: str = Depends(oauth2_scheme)           # Mantenemos compatibilidad con OpenAPI/Swagger
+    authorization: Optional[str] = Header(None),
+    token: str = Depends(oauth2_scheme)
 ):
     try:
-        # Fallback Robusto: Si Depends falla por formateo multiparte, extraemos del string de cabecera
         jwt_token = token
         if authorization and authorization.startswith("Bearer "):
             jwt_token = authorization.split(" ")[1]
@@ -283,11 +204,15 @@ async def create_report(
         try:
             user_data = jwt.decode(jwt_token, SECRET_KEY, algorithms=[ALGORITHM])
         except JWTError:
-            raise HTTPException(status_code=401, detail="Sesión expirada o inválida")
+            raise HTTPException(status_code=401, detail="Sesión expirada o firma de token inválida")
 
         reporter_user = await db.user.find_unique(where={"email": user_data.get("sub")})
         if not reporter_user:
             raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+        user_role = str(reporter_user.role).lower()
+        if user_role not in ["admin", "coordinator"]:
+            raise HTTPException(status_code=403, detail="No tienes autorización para crear solicitudes.")
 
         building = await db.building.find_first(where={"name": building_name})
         if not building:
@@ -299,50 +224,101 @@ async def create_report(
 
         total_reports = await db.report.count()
         generated_number = f"R-{str(total_reports + 1).zfill(5)}"
-        now_date = datetime.utcnow().date()
+        now_dt = datetime.utcnow()
 
-        new_report = await db.report.create(
-            data={
-                "report_number": generated_number,
-                "reporter_id": reporter_user.id,
-                "location_id": location.id,
-                "comments": comments,
-                "status": "pending" if (not assigned_to_id or assigned_to_id == "unassigned") else "assigned",
-                "report_date": now_date,
-                "inspection_date": now_date
-            }
-        )
+        # 1. Crear el reporte usando conectores de objetos de Prisma Python
+        try:
+            new_report = await db.report.create(
+                data={
+                    "report_number": generated_number,
+                    "reporter": {"connect": {"id": reporter_user.id}},
+                    "location": {"connect": {"id": location.id}},
+                    "report_date": now_dt,
+                    "inspection_date": now_dt,
+                    "comments": comments,
+                    "status": "pending" if (not assigned_to_id or assigned_to_id == "unassigned") else "assigned"
+                }
+            )
+        except Exception as err_report:
+            print(f"--- ERROR AL INSERTAR REPORTE: {str(err_report)} ---")
+            raise HTTPException(status_code=500, detail=f"Fallo al registrar reporte: {str(err_report)}")
 
-        await db.evaluation.create(
-            data={"report_id": new_report.id, "criteria_name": "Limpieza del Suelo", "rating": 5 if floor_cleaning == "bueno" else 1}
-        )
-        await db.evaluation.create(
-            data={"report_id": new_report.id, "criteria_name": "Funcionalidad de Iluminación", "rating": 5 if lighting_status == "bueno" else 1}
-        )
+        # 2. Evaluaciones físicas
+        try:
+            await db.evaluation.create(
+                data={
+                    "report": {"connect": {"id": new_report.id}},
+                    "criteria_name": "Limpieza del Suelo",
+                    "rating": 5 if floor_cleaning == "bueno" else 1
+                }
+            )
+            await db.evaluation.create(
+                data={
+                    "report": {"connect": {"id": new_report.id}},
+                    "criteria_name": "Funcionalidad de Iluminación",
+                    "rating": 5 if lighting_status == "bueno" else 1
+                }
+            )
+        except Exception as err_eval:
+            print(f"--- ERROR AL INSERTAR EVALUACIONES: {str(err_eval)} ---")
+            raise HTTPException(status_code=500, detail=f"Fallo en criterios de evaluación: {str(err_eval)}")
 
+        # 3. Asignación del técnico mapeando a UUID
         if assigned_to_id and assigned_to_id != "unassigned":
-            await db.assignment.create(
-                data={"report_id": new_report.id, "technician_id": assigned_to_id, "assigned_by": reporter_user.id, "status": "assigned"}
-            )
+            try:
+                tech_uuid = str(uuid.UUID(assigned_to_id))
+                await db.assignment.create(
+                    data={
+                        "report": {"connect": {"id": new_report.id}},
+                        "technician": {"connect": {"id": tech_uuid}},
+                        "assigner": {"connect": {"id": reporter_user.id}},
+                        "status": "assigned"
+                    }
+                )
+            except ValueError:
+                print(f"--- ERROR: assigned_to_id no es un UUID válido: {assigned_to_id} ---")
+            except Exception as err_assign:
+                print(f"--- ERROR EN ASIGNACIÓN PRISMA: {str(err_assign)} ---")
+                raise HTTPException(status_code=500, detail=f"Fallo en la asignación relacional: {str(err_assign)}")
 
+        # 4. Almacenamiento de evidencia física
         if file:
-            upload_dir = "static/uploads"
-            os.makedirs(upload_dir, exist_ok=True)
-            file_path = os.path.join(upload_dir, f"{int(datetime.utcnow().timestamp())}_{file.filename}")
-            with open(file_path, "wb") as buffer:
-                buffer.write(await file.read())
-            
-            await db.image.create(
-                data={"report_id": new_report.id, "url": f"http://localhost:8000/{file_path}", "caption": "Evidencia inicial."}
+            try:
+                upload_dir = "static/uploads"
+                os.makedirs(upload_dir, exist_ok=True)
+                file_path = os.path.join(upload_dir, f"{int(datetime.utcnow().timestamp())}_{file.filename}")
+                with open(file_path, "wb") as buffer:
+                    buffer.write(await file.read())
+                
+                await db.image.create(
+                    data={
+                        "report": {"connect": {"id": new_report.id}},
+                        "url": f"http://localhost:8000/{file_path}",
+                        "caption": "Evidencia inicial."
+                    }
+                )
+            except Exception as err_img:
+                print(f"--- ERROR AL GUARDAR MULTIPARTE IMAGEN: {str(err_img)} ---")
+
+        # 5. Escribir en el historial (Mapeado a ReportHistory)
+        try:
+            await db.reporthistory.create(
+                data={
+                    "report": {"connect": {"id": new_report.id}},
+                    "user": {"connect": {"id": reporter_user.id}},
+                    "action": "creation",
+                    "new_value": f"Reporte {generated_number} creado con éxito."
+                }
             )
+        except Exception as err_hist:
+            print(f"--- ERROR EN TABLA REPORTHISTORY: {str(err_hist)} ---")
 
-        await db.reporthistory.create(
-            data={"report_id": new_report.id, "user_id": reporter_user.id, "action": "creation", "new_value": f"Reporte {generated_number} creado con éxito."}
-        )
-
-        return {"status": "success", "report_number": generated_number}
+        return {
+            "status": "success", 
+            "report_number": str(generated_number)
+        }
 
     except Exception as e:
         if isinstance(e, HTTPException): raise e
-        print(f"--- ERROR AL CREAR REPORTE EN BACKEND: {str(e)} ---")
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"--- ERROR CRÍTICO GENERAL: {str(e)} ---")
+        raise HTTPException(status_code=500, detail="Error de consistencia relacional en Postgres")

@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import axios from "axios";
 
 export default function DashboardPage() {
@@ -58,7 +57,6 @@ export default function DashboardPage() {
       } catch (error) {
         console.error("Error al obtener los datos del Dashboard:", error);
       } finally {
-        // <-- CORREGIDO DEFINITIVAMENTE: Cambio de 'bits' por 'finally'
         setLoading(false); // Apagamos el cargador inmediatamente al terminar las peticiones
       }
     };
@@ -84,7 +82,7 @@ export default function DashboardPage() {
     );
   }
 
-  // 2. REGLAS UNAM EN MINÚSCULAS
+  // 2. REGLAS UNAM EN MINÚSCULAS (Se ejecutan solo cuando ya tenemos al usuario cargado)
   const userRole = user.role ? user.role.toLowerCase() : "";
   const isAdmin = userRole === "admin";
   const isEncargado = userRole === "coordinator";
@@ -135,16 +133,14 @@ export default function DashboardPage() {
               Edificios
             </a>
           )}
-
-          {/* REGLA: SÓLO EL ADMINISTRADOR Y EL ENCARGADO VEN LA SECCIÓN DE GESTIÓN DE PERSONAL */}
           {(isAdmin || isEncargado) && (
-            <Link
+            <a
               className="flex items-center gap-3 px-4 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl font-medium transition-colors"
-              href="/dashboard/users"
+              href="#"
             >
               <span className="material-symbols-outlined">group</span> Gestionar
               Personal
-            </Link>
+            </a>
           )}
         </nav>
 
@@ -221,12 +217,7 @@ export default function DashboardPage() {
               <h3 className="font-bold text-slate-800 text-lg">
                 Listado de Reportes de Incidencias
               </h3>
-
-              {/* ACCIÓN: BOTÓN TOTALMENTE HABILITADO Y ENRUTADO */}
-              <button
-                onClick={() => router.push("/dashboard/reports/new")}
-                className="bg-[#002B7A] hover:bg-[#CDB170] hover:text-[#002B7A] text-white px-4 py-2 rounded-xl font-bold text-sm flex items-center gap-2 transition-all shadow-sm"
-              >
+              <button className="bg-[#002B7A] text-white px-4 py-2 rounded-xl font-bold text-sm flex items-center gap-2">
                 <span className="material-symbols-outlined text-[18px]">
                   add
                 </span>
@@ -261,7 +252,7 @@ export default function DashboardPage() {
                   {reports.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={isAdmin ? 5 : 4}
+                        colSpan={6}
                         className="px-6 py-8 text-center text-sm text-slate-400 font-medium"
                       >
                         No hay incidencias registradas en la base de datos.
@@ -311,7 +302,6 @@ export default function DashboardPage() {
                         )}
 
                         <td className="px-6 py-4 text-right text-sm space-x-1 print:hidden">
-                          {/* BOTÓN 1: VISUALIZAR REPORTE */}
                           <button
                             onClick={() =>
                               router.push(`/dashboard/reports/${report.id}`)
@@ -324,13 +314,12 @@ export default function DashboardPage() {
                             </span>
                           </button>
 
-                          {/* BOTÓN 2: EDITAR REPORTE (OCULTO SI EL STATUS ES COMPLETED) */}
-                          {(isAdmin || isEncargado) &&
-                            report.status !== "completed" && (
+                          {(isAdmin || isEncargado) && (
+                            <>
                               <button
                                 onClick={() =>
                                   router.push(
-                                    `/dashboard/reports/${String(report.id)}/edit`,
+                                    `/dashboard/reports/${report.id}/edit`,
                                   )
                                 }
                                 className="text-amber-500 hover:text-amber-600 p-1.5 hover:bg-amber-50 rounded-lg transition-all"
@@ -340,7 +329,22 @@ export default function DashboardPage() {
                                   edit
                                 </span>
                               </button>
-                            )}
+
+                              <button
+                                onClick={() =>
+                                  alert(
+                                    `Abriendo asignación rápida para el reporte #${report.id}`,
+                                  )
+                                }
+                                className="text-blue-500 hover:text-blue-600 p-1.5 hover:bg-blue-50 rounded-lg transition-all"
+                                title="Asignar técnico de mantenimiento"
+                              >
+                                <span className="material-symbols-outlined text-[18px]">
+                                  assignment_turned_in
+                                </span>
+                              </button>
+                            </>
+                          )}
                         </td>
                       </tr>
                     ))
