@@ -8,8 +8,6 @@ export default function DashboardPage() {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-
-  // Estados necesarios para que las tablas y tarjetas no tiren error de "undefined"
   const [stats, setStats] = useState<any>({
     total_reports: 0,
     pending: 0,
@@ -20,7 +18,6 @@ export default function DashboardPage() {
   const API_URL = "http://localhost:8000";
 
   useEffect(() => {
-    // Cargar los iconos de Google de forma dinámica
     const link = document.createElement("link");
     link.href =
       "https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap";
@@ -30,16 +27,13 @@ export default function DashboardPage() {
     const token = localStorage.getItem("token");
     const userData = localStorage.getItem("user");
 
-    // Si no existen credenciales, directo al login
     if (!token || !userData) {
       router.replace("/login");
       return;
     }
 
-    // Parseamos el usuario real
     setUser(JSON.parse(userData));
 
-    // Consumir los datos del backend dockerizado de FastAPI
     const fetchData = async () => {
       try {
         const headers = { Authorization: `Bearer ${token}` };
@@ -55,9 +49,9 @@ export default function DashboardPage() {
         if (statsRes.data) setStats(statsRes.data);
         if (reportsRes.data) setReports(reportsRes.data);
       } catch (error) {
-        console.error("Error al obtener los datos del Dashboard:", error);
+        console.error("Error al obtener los datos:", error);
       } finally {
-        setLoading(false); // Apagamos el cargador inmediatamente al terminar las peticiones
+        setLoading(false);
       }
     };
 
@@ -70,28 +64,24 @@ export default function DashboardPage() {
     window.location.href = "/login";
   };
 
-  // 1. PANTALLA DE CARGA: Se ejecuta de forma limpia mientras loading sea true
   if (loading || !user) {
     return (
       <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center text-white font-sans gap-4">
         <div className="w-12 h-12 border-4 border-[#CDB170] border-t-transparent rounded-full animate-spin"></div>
         <p className="text-sm font-bold tracking-wider animate-pulse text-slate-300">
-          Verificando credenciales UNAM...
+          Verificando credenciales...
         </p>
       </div>
     );
   }
 
-  // 2. REGLAS UNAM EN MINÚSCULAS (Se ejecutan solo cuando ya tenemos al usuario cargado)
   const userRole = user.role ? user.role.toLowerCase() : "";
   const isAdmin = userRole === "admin";
   const isEncargado = userRole === "coordinator";
   const isEmpleado = userRole === "technician" || userRole === "inspector";
 
-  // 3. RENDERIZADO DEL DASHBOARD COMPLETO
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50 font-sans">
-      {/* SIDEBAR */}
       <aside className="w-64 flex-shrink-0 hidden lg:flex flex-col border-r border-slate-200 bg-white">
         <div className="p-5 flex items-center gap-3 border-b border-slate-100">
           <div className="bg-[#002B7A] p-2 rounded-xl flex items-center justify-center shadow-md">
@@ -126,26 +116,12 @@ export default function DashboardPage() {
             Reportes
           </button>
 
-          {/* Espacio para la bitácora global de comentarios y asignaciones */}
           <button
-            onClick={() =>
-              alert("Módulo de Mensajes en desarrollo transicional...")
-            }
+            onClick={() => alert("Módulo de Mensajes en desarrollo...")}
             className="flex items-center gap-3 w-full px-4 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl font-medium transition-colors text-left cursor-pointer"
           >
             <span className="material-symbols-outlined">forum</span> Mensajes
           </button>
-
-          {/* REPARACIÓN: Solo Admin y Coordinador/Encargado pueden gestionar e ir a infraestructura */}
-          {(isAdmin || isEncargado) && (
-            <button
-              onClick={() => router.push("/dashboard/buildings")}
-              className="flex items-center gap-3 w-full px-4 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl font-medium transition-colors text-left cursor-pointer"
-            >
-              <span className="material-symbols-outlined">corporate_fare</span>{" "}
-              Edificios
-            </button>
-          )}
 
           {(isAdmin || isEncargado) && (
             <a
@@ -161,7 +137,7 @@ export default function DashboardPage() {
         <div className="p-4 border-t border-slate-100">
           <button
             onClick={handleLogout}
-            className="flex items-center gap-3 w-full px-4 py-2.5 text-red-600 hover:bg-red-50 rounded-xl font-semibold transition-colors animate-fade-in"
+            className="flex items-center gap-3 w-full px-4 py-2.5 text-red-600 hover:bg-red-50 rounded-xl font-semibold transition-colors"
           >
             <span className="material-symbols-outlined">logout</span> Cerrar
             Sesión
@@ -169,16 +145,12 @@ export default function DashboardPage() {
         </div>
       </aside>
 
-      {/* CONTENIDO PRINCIPAL */}
       <main className="flex-1 overflow-y-auto flex flex-col">
         <header className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-slate-200 px-8 py-4 flex items-center justify-between">
           <div>
             <h2 className="text-2xl font-bold text-slate-800">
               Panel de Control ({user.role})
             </h2>
-            <p className="text-sm text-slate-500">
-              Monitoreo de mantenimiento escolar e higiene
-            </p>
           </div>
           <div className="flex items-center gap-3 border-l pl-4 border-slate-200">
             <div className="text-right hidden sm:block">
@@ -194,7 +166,6 @@ export default function DashboardPage() {
         </header>
 
         <div className="p-8 space-y-8 flex-1">
-          {/* TARJETAS DE INDICADORES */}
           {!isEmpleado && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
@@ -225,11 +196,10 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {/* TABLA DE INCIDENCIAS */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="p-5 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-50/50">
+            <div className="p-5 border-b border-slate-200 flex items-center justify-between bg-slate-50/50">
               <h3 className="font-bold text-slate-800 text-lg">
-                Listado de Reportes de Incidencias
+                Listado de Reportes
               </h3>
               <button
                 onClick={() => router.push("/dashboard/reports")}
@@ -238,120 +208,57 @@ export default function DashboardPage() {
                 <span className="material-symbols-outlined text-[18px]">
                   add
                 </span>
-                {isEmpleado ? "Abrir Nuevo Reporte" : "Crear Reporte"}
+                Nuevo Reporte
               </button>
             </div>
-
             <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
+              <table className="w-full text-left">
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-200">
-                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">
                       Reporte
                     </th>
-                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">
                       Ubicación
                     </th>
-                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">
                       Estado
                     </th>
-                    {isAdmin && (
-                      <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">
-                        Seguimientos (Admin)
-                      </th>
-                    )}
-                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">
+                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase text-right">
                       Acciones
                     </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {reports.length === 0 ? (
-                    <tr>
-                      <td
-                        colSpan={6}
-                        className="px-6 py-8 text-center text-sm text-slate-400 font-medium"
-                      >
-                        No hay incidencias registradas en la base de datos.
+                  {reports.map((report) => (
+                    <tr key={report.id} className="hover:bg-slate-50/80">
+                      <td className="px-6 py-4 text-sm font-bold text-[#002B7A]">
+                        {report.report_number}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-slate-700">
+                        {report.location?.name || "Sin asignar"}
+                      </td>
+                      <td className="px-6 py-4">
+                        <span
+                          className={`text-xs font-bold px-2 py-1 rounded-full ${report.status === "pending" ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"}`}
+                        >
+                          {report.status}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <button
+                          onClick={() =>
+                            router.push(`/dashboard/reports/${report.id}`)
+                          }
+                          className="text-slate-400 hover:text-[#002B7A]"
+                        >
+                          <span className="material-symbols-outlined">
+                            visibility
+                          </span>
+                        </button>
                       </td>
                     </tr>
-                  ) : (
-                    reports.map((report) => (
-                      <tr
-                        key={report.id}
-                        className="hover:bg-slate-50/80 transition-colors"
-                      >
-                        <td className="px-6 py-4 text-sm font-bold text-[#002B7A]">
-                          {report.report_number || `#${report.id}`}
-                        </td>
-                        <td className="px-6 py-4 text-sm text-slate-700">
-                          <strong>
-                            {report.location?.name ||
-                              report.location ||
-                              "Salón sin asignar"}
-                          </strong>{" "}
-                          <span className="text-xs text-slate-400">
-                            (
-                            {report.location?.building?.name ||
-                              report.building ||
-                              "FES Aragón"}
-                            )
-                          </span>
-                        </td>
-                        <td className="px-6 py-4">
-                          <span
-                            className={`text-xs font-bold uppercase px-2 py-1 rounded-full ${
-                              report.status === "pending"
-                                ? "bg-amber-50 text-amber-700 border border-amber-200"
-                                : report.status === "completed"
-                                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                                  : "bg-slate-100 text-slate-600"
-                            }`}
-                          >
-                            {report.status}
-                          </span>
-                        </td>
-
-                        {isAdmin && (
-                          <td className="px-6 py-4 text-xs font-semibold text-purple-700">
-                            ✨ Seguimiento activo
-                          </td>
-                        )}
-
-                        <td className="px-6 py-4 text-right text-sm space-x-1 print:hidden">
-                          <button
-                            onClick={() =>
-                              router.push(`/dashboard/reports/${report.id}`)
-                            }
-                            className="text-slate-400 hover:text-[#002B7A] p-1.5 hover:bg-slate-100 rounded-lg transition-all"
-                            title="Ver detalle del reporte"
-                          >
-                            <span className="material-symbols-outlined text-[18px]">
-                              visibility
-                            </span>
-                          </button>
-
-                          {/* REPARACIÓN FINAL: El lápiz se oculta si report.status === "completed" */}
-                          {(isAdmin || isEncargado) &&
-                            report.status !== "completed" && (
-                              <button
-                                onClick={() =>
-                                  router.push(
-                                    `/dashboard/reports/${report.id}/edit`,
-                                  )
-                                }
-                                className="text-amber-500 hover:text-amber-600 p-1.5 hover:bg-amber-50 rounded-lg transition-all"
-                                title="Editar datos del reporte"
-                              >
-                                <span className="material-symbols-outlined text-[18px]">
-                                  edit
-                                </span>
-                              </button>
-                            )}
-                        </td>
-                      </tr>
-                    ))
-                  )}
+                  ))}
                 </tbody>
               </table>
             </div>

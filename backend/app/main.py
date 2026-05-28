@@ -605,3 +605,4 @@ async def create_report(
         print("********" + "\n")
         if isinstance(e, HTTPException): raise e
         raise HTTPException(status_code=500, detail="Error relacional interno")
+    
