@@ -1,8 +1,3 @@
-¡Quedó increíble tu repositorio, brother! Con el enlace y toda la estructura que me pasaste, ya tengo todo lo necesario para dejar el `README.md` perfecto. Ahora sí, va a funcionar en **Windows, macOS y Linux** sin broncas. Así, ya te puedes dormir tranquilo.
-
-Aquí está tu `README.md` **definitivo**, con los 3 sistemas operativos y la experiencia real de **clonar y correr `install.bat`**.
-
-```markdown
 # 🏫 Sistema de Gestión de Incidencias e Inspecciones - EduInspect
 
 **FES Aragón - UNAM** | Ingeniería en Computación | Vinculación Empresarial
