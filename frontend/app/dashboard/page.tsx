@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import axios from "axios";
+import apiClient from "@/lib/axios";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -14,8 +14,6 @@ export default function DashboardPage() {
     completed_last_7_days: 0,
   });
   const [reports, setReports] = useState<any[]>([]);
-
-  const API_URL = "http://localhost:8000";
 
   useEffect(() => {
     const link = document.createElement("link");
@@ -36,14 +34,9 @@ export default function DashboardPage() {
 
     const fetchData = async () => {
       try {
-        const headers = { Authorization: `Bearer ${token}` };
         const [statsRes, reportsRes] = await Promise.all([
-          axios
-            .get(`${API_URL}/api/dashboard/stats`, { headers })
-            .catch(() => ({ data: null })),
-          axios
-            .get(`${API_URL}/api/reports`, { headers })
-            .catch(() => ({ data: [] })),
+          apiClient.get("/api/dashboard/stats"),
+          apiClient.get("/api/reports"),
         ]);
         if (statsRes.data) setStats(statsRes.data);
         if (reportsRes.data) setReports(reportsRes.data);

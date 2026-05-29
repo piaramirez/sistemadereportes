@@ -1,9 +1,25 @@
-// backend/prisma/schema.prisma
+// ==========================================
+// ARCHIVO: prisma/schema.prisma
+// AUTOR: Pedro Antonio Ramírez Alcántara
+// MATERIA: Vinculación Empresarial
+// GRUPO: 2007 (2026-II)
+// DOCENTE: Aarón Velasco Agustín
+// CARRERA: Ingeniería en Computación - FES Aragón
+// FUNCIÓN: Esquema de base de datos PostgreSQL para EduInspect
+// ==========================================
+
+// ==========================================
+// CONFIGURACIÓN DE LA BASE DE DATOS
+// ==========================================
 
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
+
+// ==========================================
+// GENERADOR DEL CLIENTE PRISMA (Python)
+// ==========================================
 
 generator client {
   provider             = "prisma-client-py"
@@ -11,63 +27,91 @@ generator client {
   recursive_type_depth = 5
 }
 
+// ==========================================
+// TABLA: users
+// Almacena todos los usuarios del sistema
+// Roles: admin, coordinator, technician, inspector
+// ==========================================
+
 model User {
-  id            String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name          String         @db.VarChar(100)
-  email         String         @unique @db.VarChar(255)
-  password_hash String         @db.VarChar(255)
-  role          String         @db.VarChar(20) // 'admin', 'coordinator', 'technician', 'inspector'
-  avatar_url    String?        @db.Text
-  is_active     Boolean?       @default(true)
-  created_at    DateTime?      @default(now()) @db.Timestamp(6)
-  updated_at    DateTime?      @default(now()) @db.Timestamp(6)
-  
-  reports       Report[]       @relation("Reporter")
-  assignments   Assignment[]   @relation("Technician")
-  created_assign Assignment[]  @relation("Assigner")
-  notifications Notification[]
-  history       ReportHistory[]
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name          String   @db.VarChar(100)
+  email         String   @unique @db.VarChar(255)
+  password_hash String   @db.VarChar(255)
+  role          String   @db.VarChar(20)  // 'admin', 'coordinator', 'technician', 'inspector'
+  avatar_url    String?  @db.Text
+  is_active     Boolean? @default(true)
+  created_at    DateTime? @default(now()) @db.Timestamp(6)
+  updated_at    DateTime? @default(now()) @db.Timestamp(6)
+
+  // Relaciones
+  reports          Report[]          @relation("Reporter")
+  assignments      Assignment[]      @relation("Technician")
+  created_assign   Assignment[]      @relation("Assigner")
+  notifications    Notification[]
+  history          ReportHistory[]
 
   @@map("users")
 }
+
+// ==========================================
+// TABLA: buildings
+// Catálogo de edificios de la FES Aragón
+// ==========================================
 
 model Building {
   id          Int        @id @default(autoincrement())
   name        String     @db.VarChar(100)
   description String?    @db.Text
   created_at  DateTime?  @default(now()) @db.Timestamp(6)
+
+  // Relación con ubicaciones
   locations   Location[]
 
   @@map("buildings")
 }
 
+// ==========================================
+// TABLA: locations
+// Ubicaciones específicas dentro de cada edificio
+// Tipos: classroom, bathroom, common_area, lab, office
+// ==========================================
+
 model Location {
   id            Int       @id @default(autoincrement())
   building_id   Int
   name          String    @db.VarChar(100)
-  location_type String    @db.VarChar(50) // 'classroom', 'bathroom', 'common_area', 'lab', 'office'
+  location_type String    @db.VarChar(50)  // 'classroom', 'bathroom', 'common_area', 'lab', 'office'
   floor         Int?
   code          String?   @unique @db.VarChar(50)
   created_at    DateTime? @default(now()) @db.Timestamp(6)
 
+  // Relaciones
   building      Building  @relation(fields: [building_id], references: [id], onDelete: Cascade)
   reports       Report[]
 
   @@map("locations")
 }
 
-model Report {
-  id              Int             @id @default(autoincrement())
-  report_number   String          @unique @db.VarChar(20)
-  reporter_id     String?         @db.Uuid
-  location_id     Int
-  report_date     DateTime        @db.Date
-  inspection_date DateTime        @db.Date
-  comments        String?         @db.Text
-  status          String?         @default("pending") @db.VarChar(20) // 'pending', 'assigned', 'in_progress', 'completed', 'cancelled'
-  created_at      DateTime?       @default(now()) @db.Timestamp(6)
-  updated_at      DateTime?       @default(now()) @db.Timestamp(6)
+// ==========================================
+// TABLA: reports
+// Reportes de incidencias generados por inspectores/coordinadores
+// Estados: pending, assigned, in_progress, completed, cancelled
+// ==========================================
 
+model Report {
+  id              Int       @id @default(autoincrement())
+  report_number   String    @unique @db.VarChar(20)  // Formato: R-00001
+  reporter_id     String?   @db.Uuid
+  location_id     Int
+  report_date     DateTime  @db.Date
+  inspection_date DateTime  @db.Date
+  comments        String?   @db.Text
+  status          String?   @default("pending") @db.VarChar(20)  // 'pending', 'assigned', 'in_progress', 'completed', 'cancelled'
+  created_at      DateTime? @default(now()) @db.Timestamp(6)
+  updated_at      DateTime? @default(now()) @db.Timestamp(6)
+
+  // Relaciones
   reporter        User?           @relation("Reporter", fields: [reporter_id], references: [id], onDelete: SetNull)
   location        Location        @relation(fields: [location_id], references: [id])
   evaluations     Evaluation[]
@@ -79,29 +123,48 @@ model Report {
   @@map("reports")
 }
 
+// ==========================================
+// TABLA: evaluations
+// Evaluaciones/calificaciones de los reportes (estrellas 1-5)
+// Criterios: Limpieza del Suelo, Funcionalidad de Iluminación
+// ==========================================
+
 model Evaluation {
   id            Int       @id @default(autoincrement())
   report_id     Int
-  criteria_name String    @db.VarChar(100)
-  rating        Int?
+  criteria_name String    @db.VarChar(100)  // 'Limpieza del Suelo', 'Funcionalidad de Iluminación'
+  rating        Int?      // Valor de 1 a 5 estrellas
   created_at    DateTime? @default(now()) @db.Timestamp(6)
 
+  // Relación con reporte
   report        Report    @relation(fields: [report_id], references: [id], onDelete: Cascade)
 
   @@map("evaluations")
 }
 
+// ==========================================
+// TABLA: images
+// Imágenes/evidencias adjuntas a los reportes
+// ==========================================
+
 model Image {
   id          Int       @id @default(autoincrement())
   report_id   Int
-  url         String    @db.Text
+  url         String    @db.Text      // Ruta o URL de la imagen
   caption     String?   @db.VarChar(255)
   uploaded_at DateTime? @default(now()) @db.Timestamp(6)
 
+  // Relación con reporte
   report      Report    @relation(fields: [report_id], references: [id], onDelete: Cascade)
 
   @@map("images")
 }
+
+// ==========================================
+// TABLA: assignments
+// Asignaciones de técnicos a reportes
+// Estados: assigned, accepted, in_progress, completed, rejected
+// ==========================================
 
 model Assignment {
   id               Int       @id @default(autoincrement())
@@ -111,8 +174,9 @@ model Assignment {
   assigned_at      DateTime? @default(now()) @db.Timestamp(6)
   completed_at     DateTime? @db.Timestamp(6)
   resolution_notes String?   @db.Text
-  status           String?   @default("assigned") @db.VarChar(20) // 'assigned', 'accepted', 'in_progress', 'completed', 'rejected'
+  status           String?   @default("assigned") @db.VarChar(20)  // 'assigned', 'accepted', 'in_progress', 'completed', 'rejected'
 
+  // Relaciones
   report           Report    @relation(fields: [report_id], references: [id], onDelete: Cascade)
   technician       User?     @relation("Technician", fields: [technician_id], references: [id])
   assigner         User?     @relation("Assigner", fields: [assigned_by], references: [id])
@@ -120,32 +184,67 @@ model Assignment {
   @@map("assignments")
 }
 
+// ==========================================
+// TABLA: notifications
+// Notificaciones del sistema para los usuarios
+// Tipos: assignment, status_change, comment, due_date
+// ==========================================
+
 model Notification {
   id         Int       @id @default(autoincrement())
   user_id    String    @db.Uuid
   report_id  Int
-  type       String    @db.VarChar(50) // 'assignment', 'status_change', 'comment', 'due_date'
+  type       String    @db.VarChar(50)   // 'assignment', 'status_change', 'comment', 'due_date'
   message    String    @db.Text
   is_read    Boolean?  @default(false)
   created_at DateTime? @default(now()) @db.Timestamp(6)
 
+  // Relaciones
   user       User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
   report     Report    @relation(fields: [report_id], references: [id], onDelete: Cascade)
 
   @@map("notifications")
 }
 
+// ==========================================
+// TABLA: report_history
+// Historial de acciones y comentarios de cada reporte
+// Acciones: creation, comment, status_change, edit
+// ==========================================
+
 model ReportHistory {
   id         Int       @id @default(autoincrement())
   report_id  Int
   user_id    String    @db.Uuid
-  action     String    @db.VarChar(50)
+  action     String    @db.VarChar(50)   // 'creation', 'comment', 'status_change', 'edit'
   old_value  String?   @db.Text
   new_value  String?   @db.Text
   created_at DateTime? @default(now()) @db.Timestamp(6)
 
+  // Relaciones
   report     Report    @relation(fields: [report_id], references: [id], onDelete: Cascade)
   user       User      @relation(fields: [user_id], references: [id])
 
   @@map("report_history")
 }
+
+// ==========================================
+// NOTAS PARA EL DESPLIEGUE:
+// ==========================================
+//
+// 1. Para generar el cliente Prisma después de cambios:
+//    $ prisma generate
+//
+// 2. Para aplicar el esquema a la base de datos:
+//    $ prisma db push
+//
+// 3. Para crear una migración:
+//    $ prisma migrate dev --name nombre_migracion
+//
+// 4. Variables de entorno necesarias en .env:
+//    DATABASE_URL="postgresql://usuario:password@localhost:5432/eduinspect"
+//
+// 5. Para usar con Neon.tech (producción):
+//    DATABASE_URL="postgresql://usuario:password@ep-something.us-east-2.aws.neon.tech/eduinspect?sslmode=require"
+//
+// ==========================================
