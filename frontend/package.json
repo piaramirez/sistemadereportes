@@ -2,15 +2,11 @@
   "name": "eduinspect-frontend",
   "version": "1.0.0",
   "private": true,
-  "description": "Frontend para EduInspect - Sistema de Reportes FES Aragón UNAM",
-  "author": "Pedro Antonio Ramírez Alcántara",
-  "license": "MIT",
   "scripts": {
     "dev": "next dev -H 0.0.0.0",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
-    "type-check": "tsc --noEmit"
+    "lint": "next lint"
   },
   "dependencies": {
     "axios": "^1.7.9",
@@ -24,8 +20,6 @@
     "@types/node": "^20.11.0",
     "@types/react": "^18.2.48",
     "@types/react-dom": "^18.2.18",
-    "@typescript-eslint/eslint-plugin": "^6.19.0",
-    "@typescript-eslint/parser": "^6.19.0",
     "autoprefixer": "^10.4.17",
     "eslint": "^8.56.0",
     "eslint-config-next": "14.2.0",
