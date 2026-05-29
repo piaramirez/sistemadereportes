@@ -1,8 +1,22 @@
+// ==========================================
+// ARCHIVO: frontend/app/dashboard/messages/page.tsx
+// AUTOR: Pedro Antonio Ramírez Alcántara
+// MATERIA: Vinculación Empresarial
+// GRUPO: 2007 (2026-II)
+// DOCENTE: Aarón Velasco Agustín
+// CARRERA: Ingeniería en Computación - FES Aragón
+// FUNCIÓN: Módulo de mensajes - Notificaciones y comentarios del sistema
+// ==========================================
+
 "use client";
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import axios from "axios";
+import apiClient from "@/lib/axios";
+
+// ==========================================
+// INTERFACES / TIPOS
+// ==========================================
 
 interface Notification {
   id: number;
@@ -36,8 +50,14 @@ interface Comment {
   };
 }
 
+// ==========================================
+// COMPONENTE PRINCIPAL
+// ==========================================
+
 export default function MessagesPage() {
   const router = useRouter();
+
+  // Estados
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [comments, setComments] = useState<Comment[]>([]);
   const [activeTab, setActiveTab] = useState<"notifications" | "comments">(
@@ -47,20 +67,27 @@ export default function MessagesPage() {
   const [selectedReportId, setSelectedReportId] = useState<number | null>(null);
   const [newComment, setNewComment] = useState("");
 
+  // ==========================================
+  // EFECTOS
+  // ==========================================
+
   useEffect(() => {
     fetchMessages();
   }, []);
 
+  // ==========================================
+  // FUNCIONES DE CARGA DE DATOS
+  // ==========================================
+
+  /**
+   * Carga todas las notificaciones y comentarios del usuario
+   * Usa apiClient que automáticamente maneja el token
+   */
   const fetchMessages = async () => {
-    const token = localStorage.getItem("token");
     try {
       const [notifRes, commentsRes] = await Promise.all([
-        axios.get("http://localhost:8000/api/notifications", {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
-        axios.get("http://localhost:8000/api/comments", {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
+        apiClient.get("/api/notifications"),
+        apiClient.get("/api/comments"),
       ]);
       setNotifications(notifRes.data);
       setComments(commentsRes.data);
@@ -71,16 +98,17 @@ export default function MessagesPage() {
     }
   };
 
+  // ==========================================
+  // FUNCIONES DE NOTIFICACIONES
+  // ==========================================
+
+  /**
+   * Marca una notificación específica como leída
+   * @param notifId - ID de la notificación a marcar
+   */
   const markAsRead = async (notifId: number) => {
-    const token = localStorage.getItem("token");
     try {
-      await axios.patch(
-        `http://localhost:8000/api/notifications/${notifId}/read`,
-        {},
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        },
-      );
+      await apiClient.patch(`/api/notifications/${notifId}/read`);
       setNotifications(
         notifications.map((n) =>
           n.id === notifId ? { ...n, is_read: true } : n,
@@ -91,16 +119,12 @@ export default function MessagesPage() {
     }
   };
 
+  /**
+   * Marca todas las notificaciones del usuario como leídas
+   */
   const markAllAsRead = async () => {
-    const token = localStorage.getItem("token");
     try {
-      await axios.post(
-        `http://localhost:8000/api/notifications/mark-all-read`,
-        {},
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        },
-      );
+      await apiClient.post("/api/notifications/mark-all-read");
       setNotifications(notifications.map((n) => ({ ...n, is_read: true })));
       alert("Todos los mensajes marcados como leídos");
     } catch (error) {
@@ -108,18 +132,21 @@ export default function MessagesPage() {
     }
   };
 
+  // ==========================================
+  // FUNCIONES DE COMENTARIOS
+  // ==========================================
+
+  /**
+   * Envía un nuevo comentario a un reporte
+   * @param reportId - ID del reporte donde se comenta
+   */
   const postComment = async (reportId: number) => {
     if (!newComment.trim()) return;
 
-    const token = localStorage.getItem("token");
     try {
-      const res = await axios.post(
-        `http://localhost:8000/api/reports/${reportId}/comments`,
-        { comment: newComment },
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        },
-      );
+      const res = await apiClient.post(`/api/reports/${reportId}/comments`, {
+        comment: newComment,
+      });
       setComments([res.data, ...comments]);
       setNewComment("");
       setSelectedReportId(null);
@@ -130,6 +157,13 @@ export default function MessagesPage() {
     }
   };
 
+  // ==========================================
+  // FUNCIONES AUXILIARES DE UI (iconos, colores, etiquetas)
+  // ==========================================
+
+  /**
+   * Retorna el ícono correspondiente según el tipo de notificación
+   */
   const getTypeIcon = (type: string) => {
     const icons: Record<string, string> = {
       assignment: "assignment",
@@ -140,6 +174,9 @@ export default function MessagesPage() {
     return icons[type] || "notifications";
   };
 
+  /**
+   * Retorna los colores de fondo y texto según el tipo de notificación
+   */
   const getTypeColor = (type: string) => {
     const colors: Record<string, string> = {
       assignment: "bg-blue-100 text-blue-700",
@@ -150,6 +187,9 @@ export default function MessagesPage() {
     return colors[type] || "bg-slate-100 text-slate-700";
   };
 
+  /**
+   * Retorna la etiqueta legible según el tipo de notificación
+   */
   const getTypeLabel = (type: string) => {
     const labels: Record<string, string> = {
       assignment: "Asignación",
@@ -160,7 +200,12 @@ export default function MessagesPage() {
     return labels[type] || type;
   };
 
+  // Calcular cantidad de no leídas
   const unreadCount = notifications.filter((n) => !n.is_read).length;
+
+  // ==========================================
+  // RENDERIZADO CONDICIONAL (LOADING)
+  // ==========================================
 
   if (loading) {
     return (
@@ -169,6 +214,10 @@ export default function MessagesPage() {
       </div>
     );
   }
+
+  // ==========================================
+  // RENDERIZADO PRINCIPAL
+  // ==========================================
 
   return (
     <div className="p-8 space-y-8 bg-slate-50 min-h-screen">
@@ -180,7 +229,7 @@ export default function MessagesPage() {
         </p>
       </div>
 
-      {/* Tabs */}
+      {/* Tabs de navegación */}
       <div className="flex gap-2 border-b border-slate-200">
         <button
           onClick={() => setActiveTab("notifications")}
@@ -209,12 +258,15 @@ export default function MessagesPage() {
         </button>
       </div>
 
-      {/* Contenido */}
+      {/* Contenido dinámico según el tab activo */}
       <div className="space-y-4">
-        {/* Notificaciones */}
+        {/* ========================================== */}
+        {/* TAB: NOTIFICACIONES */}
+        {/* ========================================== */}
         {activeTab === "notifications" && (
           <>
             {notifications.length === 0 ? (
+              // Estado vacío
               <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-12 text-center">
                 <span className="material-symbols-outlined text-6xl text-slate-300 mb-4">
                   notifications_off
@@ -223,6 +275,7 @@ export default function MessagesPage() {
               </div>
             ) : (
               <>
+                {/* Botón marcar todas como leídas */}
                 {unreadCount > 0 && (
                   <div className="flex justify-end">
                     <button
@@ -233,6 +286,8 @@ export default function MessagesPage() {
                     </button>
                   </div>
                 )}
+
+                {/* Lista de notificaciones */}
                 <div className="space-y-3">
                   {notifications.map((notif) => (
                     <div
@@ -250,6 +305,7 @@ export default function MessagesPage() {
                       }}
                     >
                       <div className="flex items-start gap-4">
+                        {/* Icono del tipo */}
                         <div
                           className={`p-2 rounded-xl ${getTypeColor(notif.type)}`}
                         >
@@ -257,6 +313,8 @@ export default function MessagesPage() {
                             {getTypeIcon(notif.type)}
                           </span>
                         </div>
+
+                        {/* Contenido */}
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-1">
                             <span
@@ -277,6 +335,8 @@ export default function MessagesPage() {
                             </p>
                           )}
                         </div>
+
+                        {/* Indicador de no leída */}
                         {!notif.is_read && (
                           <div className="w-2 h-2 bg-[#002B7A] rounded-full"></div>
                         )}
@@ -289,10 +349,13 @@ export default function MessagesPage() {
           </>
         )}
 
-        {/* Comentarios */}
+        {/* ========================================== */}
+        {/* TAB: COMENTARIOS */}
+        {/* ========================================== */}
         {activeTab === "comments" && (
           <>
             {comments.length === 0 ? (
+              // Estado vacío
               <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-12 text-center">
                 <span className="material-symbols-outlined text-6xl text-slate-300 mb-4">
                   chat
@@ -300,6 +363,7 @@ export default function MessagesPage() {
                 <p className="text-slate-500">No hay comentarios aún</p>
               </div>
             ) : (
+              // Lista de comentarios
               <div className="space-y-4">
                 {comments.map((comment) => (
                   <div
@@ -307,6 +371,7 @@ export default function MessagesPage() {
                     className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 hover:shadow-md transition-all"
                   >
                     <div className="flex items-start gap-4">
+                      {/* Avatar del usuario */}
                       <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center overflow-hidden">
                         {comment.user?.avatar_url ? (
                           <img
@@ -320,6 +385,8 @@ export default function MessagesPage() {
                           </span>
                         )}
                       </div>
+
+                      {/* Contenido del comentario */}
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-2 flex-wrap">
                           <span className="font-bold text-slate-800">
@@ -355,7 +422,9 @@ export default function MessagesPage() {
         )}
       </div>
 
-      {/* Modal para agregar comentario (flotante) */}
+      {/* ========================================== */}
+      {/* MODAL PARA AGREGAR COMENTARIO */}
+      {/* ========================================== */}
       {selectedReportId && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full">
@@ -370,6 +439,7 @@ export default function MessagesPage() {
                 <span className="material-symbols-outlined">close</span>
               </button>
             </div>
+
             <div className="p-6 space-y-4">
               <textarea
                 className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#002B7A] text-slate-800"
@@ -378,6 +448,7 @@ export default function MessagesPage() {
                 value={newComment}
                 onChange={(e) => setNewComment(e.target.value)}
               />
+
               <div className="flex gap-3">
                 <button
                   onClick={() => setSelectedReportId(null)}
@@ -399,3 +470,21 @@ export default function MessagesPage() {
     </div>
   );
 }
+
+// ==========================================
+// NOTAS PARA EL DESPLIEGUE:
+// ==========================================
+//
+// 1. Este componente usa apiClient que automáticamente:
+//    - Agrega el token JWT en los headers
+//    - Maneja la URL base (local o producción)
+//    - Redirige a login si el token expira (401)
+//
+// 2. Endpoints utilizados:
+//    - GET /api/notifications → lista notificaciones
+//    - PATCH /api/notifications/{id}/read → marcar como leída
+//    - POST /api/notifications/mark-all-read → marcar todas
+//    - GET /api/comments → lista comentarios
+//    - POST /api/reports/{id}/comments → crear comentario
+//
+// ==========================================

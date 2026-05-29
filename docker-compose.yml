@@ -1,3 +1,5 @@
+version: "3.8"
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -14,6 +16,11 @@ services:
     networks:
       - edusync_network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   backend:
     build: ./backend
@@ -22,9 +29,15 @@ services:
       - "8000:8000"
     environment:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/edusync
-      SECRET_KEY: mi-super-secreto-cambiame-en-produccion
+      SECRET_KEY: ${SECRET_KEY:-mi-super-secreto-cambiame-en-produccion}
+      ALGORITHM: HS256
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - /app/__pycache__
+      - /app/prisma/__pycache__
     networks:
       - edusync_network
     restart: unless-stopped
@@ -34,15 +47,24 @@ services:
     container_name: edusync_frontend
     ports:
       - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+      NODE_ENV: development
     depends_on:
       - backend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
     networks:
       - edusync_network
     restart: unless-stopped
 
 volumes:
   postgres_data:
+    name: edusync_postgres_data
 
 networks:
   edusync_network:
+    name: edusync_network
     driver: bridge

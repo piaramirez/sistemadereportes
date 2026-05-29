@@ -1,20 +1,64 @@
-"use client"; // <-- REPARACIÓN AQUÍ: Esta directiva tiene que ser la línea 1 obligatoria
+// ==========================================
+// ARCHIVO: frontend/app/dashboard/reports/new/page.tsx
+// AUTOR: Pedro Antonio Ramírez Alcántara
+// MATERIA: Vinculación Empresarial
+// GRUPO: 2007 (2026-II)
+// DOCENTE: Aarón Velasco Agustín
+// CARRERA: Ingeniería en Computación - FES Aragón
+// FUNCIÓN: Creación de nuevos reportes de incidencia
+// ==========================================
+
+"use client";
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import apiClient from "@/lib/axios";
 
-interface UserSelect {
+// ==========================================
+// INTERFACES / TIPOS
+// ==========================================
+
+interface Technician {
   id: string;
   name: string;
   role: string;
 }
 
-export default function NewReport() {
-  const router = useRouter();
-  const [technicians, setTechnicians] = useState<UserSelect[]>([]);
-  const [loading, setLoading] = useState(false);
+// ==========================================
+// CONSTANTES
+// ==========================================
 
-  // Estado del formulario unificado
+const EDIFICIOS = [
+  "Edificio A1",
+  "Edificio A2",
+  "Edificio A3",
+  "Edificio A4",
+  "Edificio A5",
+  "Edificio A6",
+  "Edificio A7",
+  "Edificio A8",
+  "Biblioteca Central",
+  "Idiomas",
+  "Anexo",
+  "Canchas Deportivas",
+  "Gimnasio",
+  "Áreas Comunes y Jardineras",
+  "Estacionamiento",
+];
+
+// ==========================================
+// COMPONENTE PRINCIPAL
+// ==========================================
+
+export default function NewReportPage() {
+  const router = useRouter();
+
+  // Estados
+  const [technicians, setTechnicians] = useState<Technician[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+
+  // Datos del formulario
   const [formData, setFormData] = useState({
     location_type: "classroom",
     building_name: "Edificio A1",
@@ -25,32 +69,43 @@ export default function NewReport() {
     assigned_to_id: "unassigned",
   });
 
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  // ==========================================
+  // EFECTOS
+  // ==========================================
 
-  // Cargar técnicos disponibles al montar el componente
   useEffect(() => {
-    // Cargar dinámicamente los iconos por si acaso se usan en el dashboard
+    // Agregar fuente de iconos de Material
     const link = document.createElement("link");
     link.href =
       "https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap";
     link.rel = "stylesheet";
     document.head.appendChild(link);
 
-    const token = localStorage.getItem("token");
-    fetch("http://localhost:8000/api/users", {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((res) => res.json())
-      .then((data: UserSelect[]) => {
-        // Filtrar solo usuarios de soporte técnico
+    // Cargar técnicos disponibles
+    const fetchTechnicians = async () => {
+      try {
+        const res = await apiClient.get("/api/users");
+        const data = res.data;
+        // Filtrar solo técnicos (y admin también pueden recibir asignaciones)
         const techList = data.filter(
-          (u) => u.role === "technician" || u.role === "admin",
+          (u: Technician) => u.role === "technician" || u.role === "admin",
         );
         setTechnicians(techList);
-      })
-      .catch((err) => console.error("Error cargando técnicos:", err));
+      } catch (err) {
+        console.error("Error cargando técnicos:", err);
+      }
+    };
+
+    fetchTechnicians();
   }, []);
 
+  // ==========================================
+  // MANEJADORES DE EVENTOS
+  // ==========================================
+
+  /**
+   * Maneja cambios en los campos del formulario
+   */
   const handleChange = (
     e: React.ChangeEvent<
       HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
@@ -59,19 +114,31 @@ export default function NewReport() {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
+  /**
+   * Maneja la selección de archivo de imagen
+   */
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      setSelectedFile(e.target.files[0]);
+      const file = e.target.files[0];
+      // Validar tamaño máximo (5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        alert("❌ El archivo no puede superar los 5MB");
+        return;
+      }
+      setSelectedFile(file);
     }
   };
 
+  /**
+   * Envía el formulario para crear un nuevo reporte
+   */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
     const token = localStorage.getItem("token");
     if (!token) {
-      alert("Error al guardar: Sesión expirada o inválida");
+      alert("❌ Sesión expirada. Por favor, inicia sesión nuevamente.");
       setLoading(false);
       return;
     }
@@ -90,33 +157,38 @@ export default function NewReport() {
     }
 
     try {
-      const response = await fetch("http://localhost:8000/api/reports", {
-        method: "POST",
+      const response = await apiClient.post("/api/reports", dataToSend, {
         headers: {
-          Authorization: `Bearer ${token}`,
+          "Content-Type": "multipart/form-data",
         },
-        body: dataToSend,
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || "Error en el servidor Postgres");
+      if (response.data && response.data.report_number) {
+        alert(`✅ ¡Reporte ${response.data.report_number} creado con éxito!`);
+        router.push("/dashboard");
+      } else {
+        alert("✅ Reporte creado con éxito");
+        router.push("/dashboard");
       }
-
-      const result = await response.json();
-      alert(`¡Reporte ${result.report_number} creado con éxito!`);
-      router.push("/dashboard");
     } catch (error: any) {
-      alert(`Error al guardar: ${error.message}`);
+      console.error("Error al crear reporte:", error);
+      const errorMsg = error.response?.data?.detail || "Error al crear reporte";
+      alert(`❌ Error al guardar: ${errorMsg}`);
     } finally {
       setLoading(false);
     }
   };
 
+  // ==========================================
+  // RENDERIZADO PRINCIPAL
+  // ==========================================
+
   return (
     <div className="min-h-screen bg-slate-50 py-10 px-4 font-sans">
       <div className="max-w-2xl mx-auto">
-        {/* Botón de Regresar Profesional */}
+        {/* ========================================== */}
+        {/* BOTÓN VOLVER */}
+        {/* ========================================== */}
         <button
           type="button"
           onClick={() => router.push("/dashboard")}
@@ -128,13 +200,15 @@ export default function NewReport() {
           Volver al Panel Principal
         </button>
 
-        {/* Contenedor del Formulario */}
+        {/* ========================================== */}
+        {/* FORMULARIO */}
+        {/* ========================================== */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-          {/* Encabezado Institucional */}
+          {/* Encabezado */}
           <div className="p-6 bg-white border-b border-slate-100 flex items-center justify-between">
             <div>
               <h2 className="text-xl font-bold text-[#002B7A]">
-                Levantar Nuevo Reporte
+                📋 Levantar Nuevo Reporte
               </h2>
               <p className="text-xs font-bold text-[#CDB170] uppercase tracking-wider mt-0.5">
                 Sistema de Monitoreo FES Aragón UNAM
@@ -148,30 +222,41 @@ export default function NewReport() {
           </div>
 
           <form onSubmit={handleSubmit} className="p-6 space-y-5">
-            {/* Infraestructura */}
+            {/* ========================================== */}
+            {/* UBICACIÓN */}
+            {/* ========================================== */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Edificio */}
               <div>
                 <label className="block text-xs font-bold text-slate-600 uppercase tracking-wide mb-1.5">
-                  Edificio
+                  🏫 Edificio
                 </label>
-                <input
-                  type="text"
+                <select
                   name="building_name"
                   value={formData.building_name}
                   onChange={handleChange}
-                  className="block w-full rounded-xl border border-slate-200 p-2.5 bg-slate-50 text-sm focus:outline-none focus:border-[#002B7A] focus:bg-white transition-all text-slate-800"
+                  className="block w-full rounded-xl border border-slate-200 p-2.5 bg-white text-sm focus:outline-none focus:border-[#002B7A] focus:ring-1 focus:ring-[#002B7A] transition-all text-slate-800"
                   required
-                />
+                >
+                  {EDIFICIOS.map((edificio) => (
+                    <option key={edificio} value={edificio}>
+                      {edificio}
+                    </option>
+                  ))}
+                </select>
               </div>
+
+              {/* Ubicación / Salón */}
               <div>
                 <label className="block text-xs font-bold text-slate-600 uppercase tracking-wide mb-1.5">
-                  Ubicación / Salón
+                  📍 Ubicación / Salón
                 </label>
                 <input
                   type="text"
                   name="classroom_name"
                   value={formData.classroom_name}
                   onChange={handleChange}
+                  placeholder="Ej: Salón 101, Laboratorio 3, etc."
                   className="block w-full rounded-xl border border-slate-200 p-2.5 bg-slate-50 text-sm focus:outline-none focus:border-[#002B7A] focus:bg-white transition-all text-slate-800"
                   required
                 />
@@ -181,81 +266,96 @@ export default function NewReport() {
             {/* Tipo de Área */}
             <div>
               <label className="block text-xs font-bold text-slate-600 uppercase tracking-wide mb-1.5">
-                Tipo de Espacio
+                🏷️ Tipo de Espacio
               </label>
               <select
                 name="location_type"
                 value={formData.location_type}
                 onChange={handleChange}
-                className="block w-full rounded-xl border border-slate-200 p-2.5 bg-white text-sm focus:outline-none focus:border-[#002B7A] transition-all text-slate-800"
+                className="block w-full rounded-xl border border-slate-200 p-2.5 bg-white text-sm focus:outline-none focus:border-[#002B7A] focus:ring-1 focus:ring-[#002B7A] transition-all text-slate-800"
               >
-                <option value="classroom">Salón de Clases</option>
-                <option value="bathroom">Baños</option>
-                <option value="common_area">Área Común</option>
-                <option value="lab">Laboratorio</option>
-                <option value="office">Oficina</option>
+                <option value="classroom">📚 Salón de Clases</option>
+                <option value="bathroom">🚽 Baños</option>
+                <option value="common_area">🌳 Área Común</option>
+                <option value="lab">🔬 Laboratorio</option>
+                <option value="office">💼 Oficina</option>
               </select>
             </div>
 
-            {/* Evaluaciones rápidas de infraestructura */}
+            {/* ========================================== */}
+            {/* EVALUACIONES */}
+            {/* ========================================== */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-slate-100 pt-4">
+              {/* Limpieza del Suelo */}
               <div>
                 <label className="block text-xs font-bold text-slate-600 uppercase tracking-wide mb-1.5">
-                  Limpieza del Suelo
+                  🧹 Limpieza del Suelo
                 </label>
                 <select
                   name="floor_cleaning"
                   value={formData.floor_cleaning}
                   onChange={handleChange}
-                  className="block w-full rounded-xl border border-slate-200 p-2.5 bg-white text-sm focus:outline-none focus:border-[#002B7A] transition-all text-slate-800"
+                  className="block w-full rounded-xl border border-slate-200 p-2.5 bg-white text-sm focus:outline-none focus:border-[#002B7A] focus:ring-1 focus:ring-[#002B7A] transition-all text-slate-800"
                 >
-                  <option value="bueno">Limpio / Adecuado (5★)</option>
-                  <option value="malo">Sucio / Requiere Limpieza (1★)</option>
+                  <option value="bueno">✅ Limpio / Adecuado (5★)</option>
+                  <option value="malo">
+                    ❌ Sucio / Requiere Limpieza (1★)
+                  </option>
                 </select>
               </div>
+
+              {/* Iluminación */}
               <div>
                 <label className="block text-xs font-bold text-slate-600 uppercase tracking-wide mb-1.5">
-                  Iluminación
+                  💡 Iluminación
                 </label>
                 <select
                   name="lighting_status"
                   value={formData.lighting_status}
                   onChange={handleChange}
-                  className="block w-full rounded-xl border border-slate-200 p-2.5 bg-white text-sm focus:outline-none focus:border-[#002B7A] transition-all text-slate-800"
+                  className="block w-full rounded-xl border border-slate-200 p-2.5 bg-white text-sm focus:outline-none focus:border-[#002B7A] focus:ring-1 focus:ring-[#002B7A] transition-all text-slate-800"
                 >
-                  <option value="bueno">Funcional (5★)</option>
-                  <option value="malo">Foco Fundido / Sin Luz (1★)</option>
+                  <option value="bueno">✅ Funcional (5★)</option>
+                  <option value="malo">❌ Foco Fundido / Sin Luz (1★)</option>
                 </select>
               </div>
             </div>
 
-            {/* Asignación Inmediata de Técnico */}
+            {/* ========================================== */}
+            {/* ASIGNACIÓN DE TÉCNICO */}
+            {/* ========================================== */}
             <div className="border-t border-slate-100 pt-4">
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5 flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-[#CDB170]"></span>
-                Asignación Inmediata de Personal
+                🔧 Asignación Inmediata de Personal
               </label>
               <select
                 name="assigned_to_id"
                 value={formData.assigned_to_id}
                 onChange={handleChange}
-                className="block w-full rounded-xl border border-[#CDB170]/40 p-2.5 bg-amber-50/20 text-sm focus:outline-none focus:border-[#002B7A] transition-all text-slate-800 font-medium"
+                className="block w-full rounded-xl border border-[#CDB170]/40 p-2.5 bg-amber-50/20 text-sm focus:outline-none focus:border-[#002B7A] focus:ring-1 focus:ring-[#002B7A] transition-all text-slate-800 font-medium"
               >
                 <option value="unassigned">
-                  Dejar pendiente (Sin asignar)
+                  ⏳ Dejar pendiente (Sin asignar)
                 </option>
                 {technicians.map((tech) => (
                   <option key={tech.id} value={tech.id}>
-                    {tech.name} ({tech.role.toUpperCase()})
+                    👤 {tech.name} (
+                    {tech.role === "admin" ? "Administrador" : "Técnico"})
                   </option>
                 ))}
               </select>
+              <p className="text-xs text-slate-400 mt-1">
+                Si asignas ahora, el técnico recibirá una notificación inmediata
+              </p>
             </div>
 
-            {/* Comentarios */}
+            {/* ========================================== */}
+            {/* DESCRIPCIÓN */}
+            {/* ========================================== */}
             <div>
               <label className="block text-xs font-bold text-slate-600 uppercase tracking-wide mb-1.5">
-                Descripción del Problema
+                📝 Descripción del Problema
               </label>
               <textarea
                 name="comments"
@@ -263,21 +363,25 @@ export default function NewReport() {
                 onChange={handleChange}
                 placeholder="Detalla la incidencia aquí..."
                 rows={3}
-                className="block w-full rounded-xl border border-slate-200 p-2.5 text-sm focus:outline-none focus:border-[#002B7A] transition-all text-slate-800 placeholder-slate-400"
+                className="block w-full rounded-xl border border-slate-200 p-2.5 text-sm focus:outline-none focus:border-[#002B7A] focus:ring-1 focus:ring-[#002B7A] transition-all text-slate-800 placeholder-slate-400"
                 required
               />
             </div>
 
-            {/* Subida de Evidencia Fotográfica */}
+            {/* ========================================== */}
+            {/* EVIDENCIA FOTOGRÁFICA */}
+            {/* ========================================== */}
             <div className="border-2 border-dashed border-slate-200 rounded-xl p-5 text-center hover:bg-slate-50 transition-colors cursor-pointer relative group">
               <label className="cursor-pointer flex flex-col items-center justify-center gap-1">
                 <span className="material-symbols-outlined text-slate-400 group-hover:text-[#002B7A] transition-colors text-2xl">
                   add_a_photo
                 </span>
                 <span className="text-sm font-bold text-[#002B7A] hover:underline mt-1">
-                  Cargar evidencia fotográfica
+                  📸 Cargar evidencia fotográfica
                 </span>
-                <span className="text-xs text-slate-400">PNG, JPG o JPEG</span>
+                <span className="text-xs text-slate-400">
+                  PNG, JPG o JPEG (máx 5MB)
+                </span>
                 <input
                   type="file"
                   accept="image/*"
@@ -290,12 +394,23 @@ export default function NewReport() {
                   <span className="material-symbols-outlined text-[16px]">
                     check_circle
                   </span>
-                  {selectedFile.name}
+                  📎 {selectedFile.name}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedFile(null)}
+                    className="ml-2 text-red-500 hover:text-red-700"
+                  >
+                    <span className="material-symbols-outlined text-sm">
+                      close
+                    </span>
+                  </button>
                 </div>
               )}
             </div>
 
-            {/* Botones de acción */}
+            {/* ========================================== */}
+            {/* BOTONES DE ACCIÓN */}
+            {/* ========================================== */}
             <div className="flex items-center justify-end space-x-3 pt-4 border-t border-slate-100">
               <button
                 type="button"
@@ -315,7 +430,7 @@ export default function NewReport() {
                     Sincronizando...
                   </>
                 ) : (
-                  "Guardar Reporte"
+                  "💾 Guardar Reporte"
                 )}
               </button>
             </div>
@@ -325,3 +440,26 @@ export default function NewReport() {
     </div>
   );
 }
+
+// ==========================================
+// NOTAS PARA EL DESPLIEGUE:
+// ==========================================
+//
+// 1. ENDPOINTS UTILIZADOS:
+//    - GET /api/users → Lista de técnicos
+//    - POST /api/reports → Crear nuevo reporte
+//
+// 2. PERMISOS:
+//    - Admin y Coordinator pueden crear reportes
+//    - Se valida en el backend
+//
+// 3. VALIDACIONES CLIENTE:
+//    - Archivo máximo 5MB
+//    - Todos los campos obligatorios
+//
+// 4. ESTRUCTURA DEL FORMULARIO:
+//    - Multipart/form-data (soporta imágenes)
+//    - Asignación opcional de técnico
+//    - Evaluación de limpieza e iluminación
+//
+// ==========================================

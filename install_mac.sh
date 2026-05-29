@@ -1,12 +1,12 @@
 #!/bin/bash
 # =============================================
-# ARCHIVO: install.sh
+# ARCHIVO: install_mac.sh
 # AUTOR: Pedro Antonio Ramírez Alcántara
 # MATERIA: Vinculación Empresarial
 # GRUPO: 2007 (2026-II)
 # DOCENTE: Aarón Velasco Agustín
 # CARRERA: Ingeniería en Computación - FES Aragón
-# FUNCIÓN: Instalador automático de EduInspect para LINUX
+# FUNCIÓN: Instalador automático de EduInspect para MAC
 # =============================================
 
 # Colores
@@ -57,37 +57,46 @@ check_error() {
     fi
 }
 
+# Verificar Homebrew
+check_homebrew() {
+    if ! command -v brew &> /dev/null; then
+        print_warning "Homebrew no instalado. Instalando..."
+        /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+    fi
+}
+
 # Inicio del script
 print_banner
 
 # =============================================
-# PASO 1: VERIFICAR DOCKER
+# PASO 1: VERIFICAR HOMEBREW
 # =============================================
-print_step "1" "Verificando Docker..."
-
-if ! command -v docker &> /dev/null; then
-    print_error "Docker no está instalado"
-    print_info "Instalando Docker..."
-    curl -fsSL https://get.docker.com -o get-docker.sh
-    sudo sh get-docker.sh
-    sudo usermod -aG docker $USER
-    print_warning "Docker instalado. Es posible que necesites cerrar sesión y volver a entrar."
-else
-    print_success "Docker instalado"
-fi
+print_step "1" "Verificando Homebrew..."
+check_homebrew
+print_success "Homebrew listo"
 echo ""
 
 # =============================================
-# PASO 2: VERIFICAR DOCKER COMPOSE
+# PASO 2: VERIFICAR DOCKER
 # =============================================
-print_step "2" "Verificando Docker Compose..."
+print_step "2" "Verificando Docker..."
 
-if ! command -v docker compose &> /dev/null; then
-    print_warning "Docker Compose no está instalado, instalando..."
-    sudo apt-get update
-    sudo apt-get install -y docker-compose-plugin
+if ! command -v docker &> /dev/null; then
+    print_error "Docker no está instalado"
+    print_info "Descarga Docker Desktop desde: https://docs.docker.com/desktop/install/mac/"
+    print_info "Luego ejecuta este script nuevamente"
+    exit 1
 fi
-print_success "Docker Compose disponible"
+
+# Verificar que Docker esté corriendo
+docker info &> /dev/null
+if [ $? -ne 0 ]; then
+    print_error "Docker no está corriendo"
+    print_info "Inicia Docker Desktop desde Aplicaciones"
+    exit 1
+fi
+
+print_success "Docker instalado y corriendo"
 echo ""
 
 # =============================================
@@ -96,9 +105,9 @@ echo ""
 print_step "3" "Verificando Node.js..."
 
 if ! command -v node &> /dev/null; then
-    print_warning "Node.js no instalado, instalando Node.js 20 LTS..."
-    curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-    sudo apt-get install -y nodejs
+    print_warning "Node.js no instalado, instalando con Homebrew..."
+    brew install node@20
+    brew link --overwrite node@20
 fi
 print_success "Node.js $(node --version) instalado"
 echo ""
@@ -109,9 +118,8 @@ echo ""
 print_step "4" "Verificando Python..."
 
 if ! command -v python3 &> /dev/null; then
-    print_warning "Python no instalado, instalando Python 3.11..."
-    sudo apt-get update
-    sudo apt-get install -y python3.11 python3-pip
+    print_warning "Python no instalado, instalando con Homebrew..."
+    brew install python@3.11
 fi
 print_success "Python $(python3 --version) instalado"
 echo ""

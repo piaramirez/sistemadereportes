@@ -1,9 +1,53 @@
+// ==========================================
+// ARCHIVO: frontend/app/dashboard/reports/[id]/edit/page.tsx
+// AUTOR: Pedro Antonio Ramírez Alcántara
+// MATERIA: Vinculación Empresarial
+// GRUPO: 2007 (2026-II)
+// DOCENTE: Aarón Velasco Agustín
+// CARRERA: Ingeniería en Computación - FES Aragón
+// FUNCIÓN: Página de edición de reportes - Solo admin/coordinator
+// ==========================================
+
 "use client";
 
 import { useEffect, useState, use } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import axios from "axios";
+import apiClient from "@/lib/axios";
+
+// ==========================================
+// TIPOS / INTERFACES
+// ==========================================
+
+interface Image {
+  url: string;
+  caption: string;
+}
+
+interface ReportData {
+  id: string;
+  report_number: string;
+  building: string;
+  location: string;
+  location_type: string;
+  comments: string;
+  status: string;
+  assigned_to_id: string;
+  floor_cleaning_rating: number;
+  lighting_rating: number;
+  images: Image[];
+}
+
+interface Technician {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+}
+
+// ==========================================
+// COMPONENTE PRINCIPAL
+// ==========================================
 
 export default function EditReportPage({
   params,
@@ -14,35 +58,42 @@ export default function EditReportPage({
   const unwrappedParams = use(params);
   const id = unwrappedParams.id;
 
+  // ==========================================
+  // ESTADOS
+  // ==========================================
+
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  // --- NUEVOS ESTADOS COMPATIBLES CON CREACIÓN ---
+  // Datos del formulario
   const [building, setBuilding] = useState("");
   const [location, setLocation] = useState("");
   const [locationType, setLocationType] = useState("classroom");
-  const [floorCleaning, setFloorCleaning] = useState("5"); // Se guarda como string de calificación
+  const [floorCleaning, setFloorCleaning] = useState("5");
   const [lightingStatus, setLightingStatus] = useState("5");
   const [comments, setComments] = useState("");
   const [status, setStatus] = useState("pending");
   const [assignedTechId, setAssignedTechId] = useState("unassigned");
 
-  // Gestión de Imágenes/Evidencias
-  const [existingImages, setExistingImages] = useState<any[]>([]);
+  // Gestión de imágenes
+  const [existingImages, setExistingImages] = useState<Image[]>([]);
   const [newFile, setNewFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [deleteExistingPhoto, setDeleteExistingPhoto] = useState(false);
 
   // Catálogos
-  const [technicians, setTechnicians] = useState<any[]>([]);
+  const [technicians, setTechnicians] = useState<Technician[]>([]);
 
-  const API_URL = "http://localhost:8000";
+  // ==========================================
+  // EFECTOS
+  // ==========================================
 
   useEffect(() => {
     const token = localStorage.getItem("token");
     const userData = localStorage.getItem("user");
 
+    // Verificar autenticación
     if (!token || !userData) {
       router.push("/login");
       return;
@@ -51,6 +102,7 @@ export default function EditReportPage({
     const parsedUser = JSON.parse(userData);
     const role = parsedUser.role ? parsedUser.role.toLowerCase() : "";
 
+    // Verificar permisos (solo admin o coordinator)
     if (role !== "admin" && role !== "coordinator") {
       alert("Acceso denegado: Tu rol no permite la edición de solicitudes.");
       router.push(`/dashboard/reports/${id}`);
@@ -61,13 +113,12 @@ export default function EditReportPage({
 
     const loadData = async () => {
       try {
-        const headers = { Authorization: `Bearer ${token}` };
-
         const [reportRes, usersRes] = await Promise.all([
-          axios.get(`${API_URL}/api/reports/${id}`, { headers }),
-          axios.get(`${API_URL}/api/users`, { headers }),
+          apiClient.get(`/api/reports/${id}`),
+          apiClient.get("/api/users"),
         ]);
 
+        // Cargar datos del reporte
         if (reportRes.data) {
           const r = reportRes.data;
           setBuilding(r.building || "");
@@ -78,12 +129,12 @@ export default function EditReportPage({
           setAssignedTechId(r.assigned_to_id || "unassigned");
           setExistingImages(r.images || []);
 
-          // Mapear evaluaciones previas si existen en la respuesta del backend
           if (r.floor_cleaning_rating)
             setFloorCleaning(String(r.floor_cleaning_rating));
           if (r.lighting_rating) setLightingStatus(String(r.lighting_rating));
         }
 
+        // Cargar lista de técnicos
         if (usersRes.data) {
           const techList = usersRes.data.filter(
             (u: any) => u.role.toLowerCase() === "technician",
@@ -92,7 +143,7 @@ export default function EditReportPage({
         }
       } catch (err) {
         console.error("Error cargando los datos de edición:", err);
-        alert("No se pudieron recuperar los registros de Postgres.");
+        alert("No se pudieron recuperar los registros.");
       } finally {
         setLoading(false);
       }
@@ -101,6 +152,13 @@ export default function EditReportPage({
     loadData();
   }, [router, id]);
 
+  // ==========================================
+  // FUNCIONES DE MANEJO DE IMÁGENES
+  // ==========================================
+
+  /**
+   * Maneja la selección de una nueva imagen
+   */
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
@@ -110,28 +168,36 @@ export default function EditReportPage({
     }
   };
 
+  /**
+   * Elimina la foto existente actual
+   */
   const handleRemoveExistingPhoto = () => {
     setDeleteExistingPhoto(true);
     setNewFile(null);
-    setPreviewUrl(null);
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl); // Limpiar memoria
+      setPreviewUrl(null);
+    }
   };
 
+  // ==========================================
+  // ENVÍO DEL FORMULARIO
+  // ==========================================
+
+  /**
+   * Guarda los cambios del reporte
+   * - Primero actualiza el estado (PUT /status)
+   * - Luego actualiza el resto (PATCH multipart)
+   */
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
-    const token = localStorage.getItem("token");
 
     try {
-      const headers = { Authorization: `Bearer ${token}` };
+      // 1. Actualizar estado operativo
+      await apiClient.put(`/api/reports/${id}/status`, { status });
 
-      // 1. Sincronizar primero el estado operativo mediante el endpoint PUT
-      await axios.put(
-        `${API_URL}/api/reports/${id}/status`,
-        { status },
-        { headers },
-      );
-
-      // 2. Construir FormData completo con toda la estructura homologada
+      // 2. Actualizar el resto del reporte (multipart/form-data)
       const formData = new FormData();
       formData.append("building_name", building);
       formData.append("classroom_name", location);
@@ -146,23 +212,26 @@ export default function EditReportPage({
         formData.append("file", newFile);
       }
 
-      await axios.patch(`${API_URL}/api/reports/${id}`, formData, {
+      await apiClient.patch(`/api/reports/${id}`, formData, {
         headers: {
-          ...headers,
           "Content-Type": "multipart/form-data",
         },
       });
 
-      alert("Mantenimiento actualizado de forma exitosa en Postgres.");
+      alert("✅ Mantenimiento actualizado exitosamente.");
       router.push(`/dashboard/reports/${id}`);
       router.refresh();
     } catch (err) {
       console.error("Error al guardar la edición:", err);
-      alert("Ocurrió un error interno al guardar en el servidor.");
+      alert("❌ Ocurrió un error interno al guardar.");
     } finally {
       setSaving(false);
     }
   };
+
+  // ==========================================
+  // RENDERIZADO CONDICIONAL (LOADING)
+  // ==========================================
 
   if (loading) {
     return (
@@ -172,8 +241,13 @@ export default function EditReportPage({
     );
   }
 
+  // ==========================================
+  // RENDERIZADO PRINCIPAL
+  // ==========================================
+
   return (
     <div className="bg-slate-50 min-h-screen font-sans text-slate-900 pb-12">
+      {/* Header con navegación */}
       <nav className="border-b border-slate-200 bg-white sticky top-0 z-10">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex h-16 items-center gap-4">
@@ -190,6 +264,7 @@ export default function EditReportPage({
         </div>
       </nav>
 
+      {/* Formulario principal */}
       <main className="max-w-3xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
         <form
           onSubmit={handleFormSubmit}
@@ -199,7 +274,9 @@ export default function EditReportPage({
             Formulario Oficial de Modificación
           </h2>
 
-          {/* FILA 1: EDIFICIO Y UBICACIÓN */}
+          {/* ========================================== */}
+          {/* UBICACIÓN Y EDIFICIO */}
+          {/* ========================================== */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-xs font-bold text-slate-500 uppercase tracking-wide block mb-1">
@@ -227,7 +304,7 @@ export default function EditReportPage({
             </div>
           </div>
 
-          {/* TIPO DE ESPACIO */}
+          {/* Tipo de espacio */}
           <div>
             <label className="text-xs font-bold text-slate-500 uppercase tracking-wide block mb-1">
               Tipo de Espacio
@@ -247,7 +324,9 @@ export default function EditReportPage({
             </select>
           </div>
 
-          {/* EVALUACIONES DE ESTRELLAS HOMOLOGADAS */}
+          {/* ========================================== */}
+          {/* EVALUACIONES (estrellas) */}
+          {/* ========================================== */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-xs font-bold text-slate-500 uppercase tracking-wide block mb-1">
@@ -279,7 +358,9 @@ export default function EditReportPage({
             </div>
           </div>
 
-          {/* CONTROL OPERATIVO Y ASIGNACIÓN */}
+          {/* ========================================== */}
+          {/* ESTADO Y ASIGNACIÓN */}
+          {/* ========================================== */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t pt-4">
             <div>
               <label className="text-xs font-bold text-slate-500 uppercase tracking-wide block mb-1">
@@ -307,18 +388,18 @@ export default function EditReportPage({
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#002B7A] text-slate-800"
               >
                 <option value="unassigned">
-                  Dejar pendiente (Sin asignar)
+                  📌 Dejar pendiente (Sin asignar)
                 </option>
                 {technicians.map((tech) => (
                   <option key={tech.id} value={tech.id}>
-                    {tech.name}
+                    👤 {tech.name}
                   </option>
                 ))}
               </select>
             </div>
           </div>
 
-          {/* DESCRIPCIÓN DEL PROBLEMA */}
+          {/* Descripción del problema */}
           <div>
             <label className="text-xs font-bold text-slate-500 uppercase tracking-wide block mb-1">
               Descripción del Problema
@@ -332,12 +413,15 @@ export default function EditReportPage({
             />
           </div>
 
-          {/* CONTROL FOTOGRÁFICO */}
+          {/* ========================================== */}
+          {/* EVIDENCIA FOTOGRÁFICA */}
+          {/* ========================================== */}
           <div className="border-t pt-4">
             <label className="text-xs font-bold text-slate-500 uppercase tracking-wide block mb-2">
-              Evidencia Fotográfica de Soporte
+              📸 Evidencia Fotográfica de Soporte
             </label>
 
+            {/* Foto existente (no eliminada) */}
             {!deleteExistingPhoto && existingImages.length > 0 && (
               <div className="relative w-full max-w-xs border rounded-xl overflow-hidden bg-slate-100 mb-4 group">
                 <img
@@ -358,6 +442,7 @@ export default function EditReportPage({
               </div>
             )}
 
+            {/* Vista previa de nueva foto */}
             {previewUrl && (
               <div className="relative w-full max-w-xs border border-amber-300 rounded-xl overflow-hidden bg-slate-100 mb-4">
                 <img
@@ -368,7 +453,7 @@ export default function EditReportPage({
                 <button
                   type="button"
                   onClick={handleRemoveExistingPhoto}
-                  className="absolute top-2 right-2 bg-gray-700 text-white p-1.5 rounded-xl shadow-md cursor-pointer"
+                  className="absolute top-2 right-2 bg-gray-700 hover:bg-gray-800 text-white p-1.5 rounded-xl shadow-md transition-colors cursor-pointer"
                 >
                   <span className="material-symbols-outlined text-sm">
                     close
@@ -377,6 +462,7 @@ export default function EditReportPage({
               </div>
             )}
 
+            {/* Input para subir nueva foto */}
             {(deleteExistingPhoto || existingImages.length === 0) &&
               !previewUrl && (
                 <div className="flex items-center justify-center w-full">
@@ -389,7 +475,7 @@ export default function EditReportPage({
                         Cargar evidencia fotográfica
                       </p>
                       <p className="text-[10px] text-slate-400">
-                        PNG, JPG o JPEG
+                        PNG, JPG o JPEG (máx 5MB)
                       </p>
                     </div>
                     <input
@@ -403,14 +489,23 @@ export default function EditReportPage({
               )}
           </div>
 
-          {/* BOTONES */}
+          {/* ========================================== */}
+          {/* BOTONES DE ACCIÓN */}
+          {/* ========================================== */}
           <div className="flex items-center gap-3 pt-4 border-t">
             <button
               type="submit"
               disabled={saving}
               className="flex-1 bg-[#002B7A] hover:bg-[#001F5C] text-white py-2.5 rounded-xl text-sm font-bold shadow-md transition-all disabled:opacity-50 cursor-pointer text-center"
             >
-              {saving ? "Sincronizando..." : "Guardar Reporte"}
+              {saving ? (
+                <span className="flex items-center justify-center gap-2">
+                  <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                  Sincronizando...
+                </span>
+              ) : (
+                "💾 Guardar Reporte"
+              )}
             </button>
             <Link
               href={`/dashboard/reports/${id}`}
@@ -424,3 +519,23 @@ export default function EditReportPage({
     </div>
   );
 }
+
+// ==========================================
+// NOTAS PARA EL DESPLIEGUE:
+// ==========================================
+//
+// 1. ENDPOINTS UTILIZADOS:
+//    - GET /api/reports/{id} → Obtener datos del reporte
+//    - GET /api/users → Lista de técnicos
+//    - PUT /api/reports/{id}/status → Actualizar estado
+//    - PATCH /api/reports/{id} → Actualizar resto (multipart)
+//
+// 2. PERMISOS:
+//    - Solo admin y coordinator pueden editar
+//    - Si un técnico intenta acceder, se le redirige al detalle
+//
+// 3. MANEJO DE IMÁGENES:
+//    - Puede eliminar foto existente y/o subir una nueva
+//    - delete_photo = "true" indica eliminar las fotos actuales
+//
+// ==========================================

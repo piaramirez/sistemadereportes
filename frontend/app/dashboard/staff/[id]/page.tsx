@@ -1,7 +1,22 @@
+// ==========================================
+// ARCHIVO: frontend/app/dashboard/staff/[id]/page.tsx
+// AUTOR: Pedro Antonio Ramírez Alcántara
+// MATERIA: Vinculación Empresarial
+// GRUPO: 2007 (2026-II)
+// DOCENTE: Aarón Velasco Agustín
+// CARRERA: Ingeniería en Computación - FES Aragón
+// FUNCIÓN: Detalle de un usuario del sistema (personal)
+// ==========================================
+
 "use client";
+
 import { useEffect, useState } from "react";
-import axios from "axios";
 import { useParams, useRouter } from "next/navigation";
+import apiClient from "@/lib/axios";
+
+// ==========================================
+// INTERFACES / TIPOS
+// ==========================================
 
 interface Assignment {
   id: number;
@@ -27,11 +42,19 @@ interface User {
   assignments: Assignment[];
 }
 
+// ==========================================
+// COMPONENTE PRINCIPAL
+// ==========================================
+
 export default function StaffDetailPage() {
   const { id } = useParams();
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // ==========================================
+  // EFECTOS
+  // ==========================================
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -42,9 +65,7 @@ export default function StaffDetailPage() {
       }
 
       try {
-        const res = await axios.get(`http://localhost:8000/api/users/${id}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const res = await apiClient.get(`/api/users/${id}`);
         setUser(res.data);
       } catch (error) {
         console.error("Error al cargar usuario:", error);
@@ -56,18 +77,18 @@ export default function StaffDetailPage() {
     fetchUser();
   }, [id, router]);
 
+  // ==========================================
+  // FUNCIONES DE ACCIONES
+  // ==========================================
+
+  /**
+   * Restablece la contraseña del usuario a "Unam26!#"
+   */
   const resetPass = async () => {
     if (!confirm("¿Restablecer contraseña a Unam26!#?")) return;
 
     try {
-      const token = localStorage.getItem("token");
-      await axios.post(
-        `http://localhost:8000/api/users/${id}/reset-password`,
-        {},
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        },
-      );
+      await apiClient.post(`/api/users/${id}/reset-password`);
       alert("✓ Contraseña restablecida a: Unam26!#");
     } catch (error) {
       console.error("Error al restablecer contraseña:", error);
@@ -75,20 +96,21 @@ export default function StaffDetailPage() {
     }
   };
 
+  /**
+   * Elimina el usuario del sistema
+   * También elimina todas sus asignaciones relacionadas
+   */
   const deleteUser = async () => {
     if (
       !confirm(
-        "¿Eliminar este usuario? También se eliminarán sus asignaciones.",
+        "⚠️ ¿Eliminar este usuario? También se eliminarán sus asignaciones y no se podrá recuperar.",
       )
     )
       return;
 
     try {
-      const token = localStorage.getItem("token");
-      await axios.delete(`http://localhost:8000/api/users/${id}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      alert("Usuario eliminado correctamente");
+      await apiClient.delete(`/api/users/${id}`);
+      alert("✅ Usuario eliminado correctamente");
       router.push("/dashboard/staff");
     } catch (error) {
       console.error("Error al eliminar usuario:", error);
@@ -96,19 +118,16 @@ export default function StaffDetailPage() {
     }
   };
 
+  /**
+   * Activa o desactiva el usuario (cambia is_active)
+   * Los usuarios inactivos no pueden iniciar sesión
+   */
   const toggleActive = async () => {
     try {
-      const token = localStorage.getItem("token");
-      await axios.patch(
-        `http://localhost:8000/api/users/${id}/toggle-active`,
-        {},
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        },
-      );
+      await apiClient.patch(`/api/users/${id}/toggle-active`);
       setUser({ ...user!, is_active: !user!.is_active });
       alert(
-        `Usuario ${user!.is_active ? "desactivado" : "activado"} correctamente`,
+        `✅ Usuario ${user!.is_active ? "desactivado" : "activado"} correctamente`,
       );
     } catch (error) {
       console.error("Error al cambiar estado:", error);
@@ -116,6 +135,13 @@ export default function StaffDetailPage() {
     }
   };
 
+  // ==========================================
+  // FUNCIONES AUXILIARES UI
+  // ==========================================
+
+  /**
+   * Retorna la etiqueta legible del rol
+   */
   const getRoleLabel = (role: string) => {
     const roles: Record<string, string> = {
       admin: "Administrador",
@@ -126,6 +152,9 @@ export default function StaffDetailPage() {
     return roles[role] || role;
   };
 
+  /**
+   * Retorna los colores según el rol del usuario
+   */
   const getRoleColor = (role: string) => {
     const colors: Record<string, string> = {
       admin: "bg-purple-100 text-purple-700",
@@ -136,6 +165,9 @@ export default function StaffDetailPage() {
     return colors[role] || "bg-slate-100 text-slate-600";
   };
 
+  /**
+   * Retorna los colores según el estado de la asignación
+   */
   const getStatusColor = (status: string) => {
     const colors: Record<string, string> = {
       assigned: "bg-blue-100 text-blue-700",
@@ -147,10 +179,28 @@ export default function StaffDetailPage() {
     return colors[status] || "bg-slate-100 text-slate-600";
   };
 
+  /**
+   * Retorna la etiqueta legible del estado de asignación
+   */
+  const getStatusLabel = (status: string) => {
+    const labels: Record<string, string> = {
+      assigned: "Asignado",
+      accepted: "Aceptado",
+      in_progress: "En Progreso",
+      completed: "Completado",
+      rejected: "Rechazado",
+    };
+    return labels[status] || status;
+  };
+
+  // ==========================================
+  // RENDERIZADO CONDICIONAL
+  // ==========================================
+
   if (loading) {
     return (
       <div className="p-8 bg-slate-50 min-h-screen flex items-center justify-center">
-        <div className="text-slate-500 font-medium">Cargando...</div>
+        <div className="w-10 h-10 border-4 border-[#002B7A] border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
   }
@@ -163,8 +213,15 @@ export default function StaffDetailPage() {
     );
   }
 
+  // ==========================================
+  // RENDERIZADO PRINCIPAL
+  // ==========================================
+
   return (
     <div className="p-8 space-y-8 bg-slate-50 min-h-screen">
+      {/* ========================================== */}
+      {/* HEADER */}
+      {/* ========================================== */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">
@@ -178,10 +235,14 @@ export default function StaffDetailPage() {
           onClick={() => router.back()}
           className="bg-white border border-slate-200 text-slate-600 px-4 py-2 rounded-xl font-bold text-sm hover:bg-slate-50 transition-colors flex items-center gap-2 shadow-sm"
         >
-          ← Volver
+          <span className="material-symbols-outlined text-sm">arrow_back</span>
+          Volver
         </button>
       </div>
 
+      {/* ========================================== */}
+      {/* TARJETA DE INFORMACIÓN DEL USUARIO */}
+      {/* ========================================== */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="p-5 border-b border-slate-200 bg-slate-50/50">
           <h3 className="font-bold text-slate-800 text-lg">
@@ -190,7 +251,9 @@ export default function StaffDetailPage() {
         </div>
 
         <div className="p-6 space-y-6">
+          {/* Avatar y datos básicos */}
           <div className="flex items-start gap-6">
+            {/* Avatar */}
             <div className="w-24 h-24 bg-slate-100 rounded-2xl flex items-center justify-center border border-slate-200 overflow-hidden">
               {user.avatar_url ? (
                 <img
@@ -205,24 +268,25 @@ export default function StaffDetailPage() {
               )}
             </div>
 
+            {/* Datos personales */}
             <div className="flex-1 space-y-3">
               <div>
                 <label className="text-xs font-bold text-slate-500 uppercase block mb-1">
-                  Nombre completo
+                  👤 Nombre completo
                 </label>
                 <p className="text-lg font-bold text-slate-800">{user.name}</p>
               </div>
 
               <div>
                 <label className="text-xs font-bold text-slate-500 uppercase block mb-1">
-                  Correo electrónico
+                  📧 Correo electrónico
                 </label>
                 <p className="text-slate-600">{user.email}</p>
               </div>
 
               <div>
                 <label className="text-xs font-bold text-slate-500 uppercase block mb-1">
-                  Rol / Cargo
+                  🎯 Rol / Cargo
                 </label>
                 <span
                   className={`text-xs font-bold px-3 py-1.5 rounded-full uppercase inline-block ${getRoleColor(user.role)}`}
@@ -233,17 +297,19 @@ export default function StaffDetailPage() {
             </div>
           </div>
 
+          {/* Datos del sistema */}
           <div className="border-t border-slate-200 pt-6">
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="text-xs font-bold text-slate-500 uppercase block mb-1">
-                  ID de usuario
+                  🆔 ID de usuario
                 </label>
                 <p className="text-slate-600 font-mono text-sm">{user.id}</p>
               </div>
+
               <div>
                 <label className="text-xs font-bold text-slate-500 uppercase block mb-1">
-                  Estado
+                  🔘 Estado
                 </label>
                 <span
                   className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-bold ${
@@ -260,19 +326,25 @@ export default function StaffDetailPage() {
                   {user.is_active ? "Activo" : "Inactivo"}
                 </span>
               </div>
+
               <div>
                 <label className="text-xs font-bold text-slate-500 uppercase block mb-1">
-                  Fecha de registro
+                  📅 Fecha de registro
                 </label>
                 <p className="text-slate-600">
                   {user.created_at
-                    ? new Date(user.created_at).toLocaleDateString("es-MX")
+                    ? new Date(user.created_at).toLocaleDateString("es-MX", {
+                        year: "numeric",
+                        month: "long",
+                        day: "numeric",
+                      })
                     : "No disponible"}
                 </p>
               </div>
+
               <div>
                 <label className="text-xs font-bold text-slate-500 uppercase block mb-1">
-                  Reportes asignados
+                  📊 Reportes asignados
                 </label>
                 <p className="text-2xl font-bold text-slate-800">
                   {user.assignments?.length || 0}
@@ -281,12 +353,13 @@ export default function StaffDetailPage() {
             </div>
           </div>
 
+          {/* Tabla de reportes asignados (solo para técnicos) */}
           {user.role === "technician" &&
             user.assignments &&
             user.assignments.length > 0 && (
               <div className="border-t border-slate-200 pt-6">
                 <h4 className="font-bold text-slate-800 mb-4">
-                  Reportes Asignados
+                  📋 Reportes Asignados
                 </h4>
                 <div className="overflow-x-auto">
                   <table className="w-full text-left">
@@ -317,7 +390,7 @@ export default function StaffDetailPage() {
                             <span
                               className={`text-xs font-bold px-2 py-1 rounded-full ${getStatusColor(assignment.status)}`}
                             >
-                              {assignment.status}
+                              {getStatusLabel(assignment.status)}
                             </span>
                           </td>
                           <td className="px-4 py-3">
@@ -327,8 +400,11 @@ export default function StaffDetailPage() {
                                   `/dashboard/reports/${assignment.report_id}`,
                                 )
                               }
-                              className="text-[#002B7A] font-bold text-sm hover:underline"
+                              className="text-[#002B7A] font-bold text-sm hover:underline flex items-center gap-1"
                             >
+                              <span className="material-symbols-outlined text-sm">
+                                visibility
+                              </span>
                               Ver reporte
                             </button>
                           </td>
@@ -340,7 +416,9 @@ export default function StaffDetailPage() {
               </div>
             )}
 
+          {/* Botones de acción */}
           <div className="border-t border-slate-200 pt-6 flex flex-wrap gap-3">
+            {/* Resetear contraseña */}
             <button
               onClick={resetPass}
               className="bg-amber-500 hover:bg-amber-600 text-white px-6 py-2.5 rounded-xl font-bold text-sm transition-colors flex items-center gap-2"
@@ -350,6 +428,8 @@ export default function StaffDetailPage() {
               </span>
               Resetear contraseña
             </button>
+
+            {/* Activar/Desactivar usuario */}
             <button
               onClick={toggleActive}
               className={`${
@@ -363,6 +443,8 @@ export default function StaffDetailPage() {
               </span>
               {user.is_active ? "Desactivar usuario" : "Activar usuario"}
             </button>
+
+            {/* Eliminar usuario */}
             <button
               onClick={deleteUser}
               className="bg-red-600 hover:bg-red-700 text-white px-6 py-2.5 rounded-xl font-bold text-sm transition-colors flex items-center gap-2"
@@ -376,3 +458,27 @@ export default function StaffDetailPage() {
     </div>
   );
 }
+
+// ==========================================
+// NOTAS PARA EL DESPLIEGUE:
+// ==========================================
+//
+// 1. ENDPOINTS UTILIZADOS:
+//    - GET /api/users/{id} → Obtener datos del usuario
+//    - POST /api/users/{id}/reset-password → Restablecer contraseña
+//    - PATCH /api/users/{id}/toggle-active → Activar/desactivar
+//    - DELETE /api/users/{id} → Eliminar usuario
+//
+// 2. PERMISOS REQUERIDOS:
+//    - Admin y Coordinator pueden acceder a esta vista
+//    - Solo Admin puede eliminar usuarios (validado en backend)
+//
+// 3. ESTADOS DE USUARIO:
+//    - Activo: puede iniciar sesión y usar el sistema
+//    - Inactivo: no puede iniciar sesión (conserva datos históricos)
+//
+// 4. REPORTES ASIGNADOS:
+//    - Solo se muestran si el usuario es técnico
+//    - Cada reporte tiene link al detalle
+//
+// ==========================================
