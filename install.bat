@@ -1,255 +1,174 @@
 @echo off
-:: =============================================
-:: ARCHIVO: install.bat
-:: AUTOR: Pedro Antonio Ramírez Alcántara
-:: MATERIA: Vinculación Empresarial
-:: GRUPO: 2007 (2026-II)
-:: DOCENTE: Aarón Velasco Agustín
-:: CARRERA: Ingeniería en Computación - FES Aragón
-:: FUNCIÓN: Instalador automático de EduInspect para WINDOWS
-:: EJECUTAR: Click derecho -> "Ejecutar como administrador"
-:: =============================================
-
-title EDUINSPECT - INSTALADOR DEFINITIVO
+title EDUINSPECT - INSTALADOR WINDOWS
 color 0A
 
-:: =============================================
-:: INICIO
-:: =============================================
 echo ================================================
 echo    EDUINSPECT - INSTALACION COMPLETA
 echo    FES Aragon - UNAM
 echo ================================================
 echo.
 
-:: =============================================
-:: PASO 1: VERIFICAR DOCKER
-:: =============================================
-echo [1/6] Verificando Docker...
+:: ============================================
+:: 1. VERIFICAR DOCKER
+:: ============================================
+echo [1/4] Verificando Docker...
 
 where docker >nul 2>nul
 if %errorlevel% neq 0 (
-    echo [ERROR] Docker no esta instalado
+    color 0C
+    echo ================================================
+    echo [ERROR] DOCKER NO ESTA INSTALADO
+    echo ================================================
     echo.
     echo Descarga Docker Desktop desde:
-    echo https://docs.docker.com/desktop/install/windows/
+    echo https://www.docker.com/products/docker-desktop/
+    echo.
+    echo Instalalo y reinicia tu PC
     echo.
     pause
     exit /b 1
 )
 
-:: Verificar que Docker esté corriendo
 docker info >nul 2>nul
 if %errorlevel% neq 0 (
-    echo [ERROR] Docker no esta corriendo
+    color 0C
+    echo ================================================
+    echo [ERROR] DOCKER NO ESTA CORRIENDO
+    echo ================================================
     echo.
-    echo Inicia Docker Desktop desde el menu de inicio
-    echo Espera a que el icono del tray este verde
+    echo 1. Abre Docker Desktop desde el menu de inicio
+    echo 2. Espera a que el icono del tray se ponga VERDE
+    echo 3. Vuelve a ejecutar este instalador
     echo.
     pause
     exit /b 1
 )
 
-echo [OK] Docker instalado y corriendo
+echo [OK] Docker esta funcionando correctamente
 echo.
 
-:: =============================================
-:: PASO 2: VERIFICAR NODE.JS
-:: =============================================
-echo [2/6] Verificando Node.js...
-
-where node >nul 2>nul
-if %errorlevel% neq 0 (
-    echo [AVISO] Node.js no instalado
-    echo Instalando Node.js...
-    
-    :: Descargar e instalar Node.js
-    curl -L -o node_installer.msi https://nodejs.org/dist/v20.11.0/node-v20.11.0-x64.msi
-    msiexec /i node_installer.msi /quiet /norestart
-    del node_installer.msi
-    
-    :: Actualizar PATH
-    set "PATH=%PATH%;C:\Program Files\nodejs"
-)
-
-echo [OK] Node.js instalado
-echo.
-
-:: =============================================
-:: PASO 3: CREAR ESTRUCTURA DE CARPETAS
-:: =============================================
-echo [3/6] Creando estructura de carpetas...
-
-:: Backend
-mkdir backend\app\routers 2>nul
-mkdir backend\app\utils 2>nul
-mkdir backend\prisma 2>nul
-mkdir backend\static\uploads 2>nul
-
-:: Frontend
-mkdir frontend\app\dashboard\reports\[id]\edit 2>nul
-mkdir frontend\app\dashboard\reports\new 2>nul
-mkdir frontend\app\dashboard\staff\[id] 2>nul
-mkdir frontend\app\dashboard\messages 2>nul
-mkdir frontend\app\login 2>nul
-mkdir frontend\components 2>nul
-mkdir frontend\lib 2>nul
-mkdir frontend\config 2>nul
-mkdir frontend\public\images 2>nul
-mkdir frontend\hooks 2>nul
-mkdir frontend\types 2>nul
-
-:: Scripts y database
-mkdir scripts 2>nul
-mkdir database 2>nul
-
-echo [OK] Carpetas creadas
-echo.
-
-:: =============================================
-:: PASO 4: CREAR ARCHIVOS DE CONFIGURACION
-:: =============================================
-echo [4/6] Configurando archivos...
+:: ============================================
+:: 2. CREAR .ENV
+:: ============================================
+echo [2/4] Creando archivo de configuracion...
 
 if not exist ".env" (
-    (
-        echo DATABASE_URL="postgresql://postgres:postgres@postgres:5432/eduinspect"
-        echo SECRET_KEY=tu-secret-key-cambiame-en-produccion
-        echo ALGORITHM=HS256
-        echo ACCESS_TOKEN_EXPIRE_MINUTES=30
-    ) > .env
+    echo DATABASE_URL="postgresql://postgres:postgres@postgres:5432/edusync" > .env
+    echo SECRET_KEY="mi-super-secreto-cambiame-en-produccion" >> .env
+    echo ALGORITHM="HS256" >> .env
+    echo ACCESS_TOKEN_EXPIRE_MINUTES=30 >> .env
     echo [OK] Archivo .env creado
 ) else (
     echo [OK] Archivo .env ya existe
 )
-
-if not exist "backend\.env" (
-    (
-        echo DATABASE_URL="postgresql://postgres:postgres@postgres:5432/eduinspect"
-    ) > backend\.env
-    echo [OK] Archivo backend\.env creado
-)
-
 echo.
 
-:: =============================================
-:: PASO 5: INSTALAR DEPENDENCIAS
-:: =============================================
-echo [5/6] Instalando dependencias...
+:: ============================================
+:: 3. LIMPIAR CONTENEDORES VIEJOS
+:: ============================================
+echo [3/4] Limpiando instalaciones anteriores...
 
-:: Backend (Python)
-if exist "backend\requirements.txt" (
-    echo Instalando dependencias de Python...
-    pip install -r backend\requirements.txt
-    echo [OK] Dependencias de Python instaladas
-) else (
-    echo [ERROR] backend\requirements.txt no encontrado
-)
+docker compose down -v 2>nul
+docker system prune -f 2>nul
 
-:: Frontend (Node.js)
-if exist "frontend\package.json" (
-    echo Instalando dependencias de Node.js...
-    cd frontend
-    call npm install --legacy-peer-deps
-    cd ..
-    echo [OK] Dependencias de Node.js instaladas
-) else (
-    echo [ERROR] frontend\package.json no encontrado
-)
-
+echo [OK] Limpieza completada
 echo.
 
-:: =============================================
-:: PASO 6: LEVANTAR CONTENEDORES DOCKER
-:: =============================================
-echo [6/6] Levantando contenedores Docker...
+:: ============================================
+:: 4. CONSTRUIR Y LEVANTAR
+:: ============================================
+echo [4/4] Construyendo y levantando contenedores...
+echo ================================================
+echo Esto tomara entre 3 y 5 minutos
+echo NO cierres esta ventana
+echo ================================================
+echo.
 
-:: Detener contenedores existentes
-docker compose down 2>nul
-
-:: Construir y levantar
-docker compose up -d --build
-
+:: Construir primero el backend
+echo Construyendo backend...
+docker compose build backend --no-cache
 if %errorlevel% neq 0 (
-    echo [ERROR] Error al levantar contenedores
-    echo.
-    echo Posibles soluciones:
-    echo   1. Reinicia Docker Desktop
-    echo   2. Verifica los puertos 3000, 8000, 5432
-    echo   3. Ejecuta nuevamente como administrador
-    echo.
+    echo [ERROR] Fallo la construccion del backend
     pause
     exit /b 1
 )
 
-echo [OK] Contenedores levantados
+:: Construir el frontend
 echo.
+echo Construyendo frontend...
+docker compose build frontend --no-cache
+if %errorlevel% neq 0 (
+    echo [ERROR] Fallo la construccion del frontend
+    pause
+    exit /b 1
+)
 
-echo Esperando inicializacion...
-timeout /t 15 /t 15 /nobreak >nul
+:: Levantar todo
+echo.
+echo Levantando contenedores...
+docker compose up -d
+if %errorlevel% neq 0 (
+    echo [ERROR] Fallo al levantar los contenedores
+    pause
+    exit /b 1
+)
 
- /nobreak >nul
+:: Esperar a que todo inicie
+echo.
+echo Esperando a que los servicios inicien...
+timeout /t 10 /nobreak >nul
 
-:: =========================================:: =============================================
-:: MENSAJE FINAL====
+:: Verificar que los contenedores estan corriendo
+echo.
+echo Verificando estado de contenedores...
+docker ps --format "table {{.Names}}\t{{.Status}}"
+
+:: Activar usuarios si existe la tabla
+echo.
+echo Activando usuarios en la base de datos...
+docker exec edusync_postgres psql -U postgres -d edusync -c "UPDATE users SET is_active = true;" 2>nul
+
+:: ============================================
 :: MENSAJE FINAL
-:: =============================================
-
-:: =============================================
+:: ============================================
 cls
-echo =================================cls
 echo ================================================
-echo===============
-echo    INSTALACION COMPLETADA CON    INSTALACION COMPLETADA CON EXITO
-echo EXITO
-echo = ================================================================================
+echo    ¡INSTALACION COMPLETADA CON EXITO!
+echo ================================================
 echo.
-echo 📌 ACC===============
+echo 🌐 ACCESOS:
 echo.
-echo 📌 ACCESOS DEL PROESOS DEL PROYECTO:
-YECTO:
+echo    Frontend: http://localhost:3000
+echo    Backend:  http://localhost:8000/docs
+echo    Base de datos: localhost:5433
 echo.
-echo   echo.
-echo    Frontend ( Frontend (Next.js):   Next.js):    http://localhost: http://localhost:3000
-echo    Login:                3000
-echo    Login:                 http://localhost:3000/login
- http://localhost:3000/login
-echo    Backendecho    Backend (FastAPI): (FastAPI):     http://localhost:8000     http://localhost:800
-echo    Documentacion0
-echo    Documentacion API:     http API:     http://localhost:800://localhost:8000/docs
+echo 🔑 CREDENCIALES DE PRUEBA:
 echo.
-echo 🔑0/docs
+echo    Administrador: pia@edusync.com / admin123
+echo    Coordinador:   coordinador@edusync.com / Unam26!#"
+echo    Tecnico:       tecnico@edusync.com / Unam26!#"
+echo    Inspector:     inspector@edusync.com / Unam26!#"
 echo.
-echo 🔑 CREDENCIAL CREDENCIALES DE PRUEBA:
+echo ================================================
+echo    COMANDOS UTILES
+echo ================================================
 echo.
-echo   ES DE PRUEBA:
+echo    Ver todos los logs:
+echo    docker compose logs -f
 echo.
- Administradorecho    Administrador: pia@: pia@edusync.comedusync.com / admin123
- /echo    Coordinador:   coordin admin123
-echo    Coordinador@edusador:   coordinador@edusync.com / Unam26!#"
-echo    Tecync.com / Unam26!#"
-echo    Tecniconico:      :       tecnico@ed tecnico@edusync.com / Unamusync.com / Unam26!#"
-echo    Inspector26!#"
-echo    Inspector:     inspector@:     inspector@edusyncedusync.com /.com / Unam26!#"
- Unam26!#"
+echo    Ver solo el frontend:
+echo    docker compose logs frontend -f
 echo.
-echo 📝 COMecho.
-echo 📝 COMANDOS UTANDOS UTILES:
+echo    Ver solo el backend:
+echo    docker compose logs backend -f
 echo.
-ILES:
+echo    Detener todo:
+echo    docker compose down
 echo.
-echo    Verecho    Ver logs:          docker compose logs:          docker compose logs -f
-echo    Detener todo logs -f
-echo    Detener todo:      docker compose down
-echo    Reiniciar todo:    docker compose restart
-echo   :      docker compose down
-echo    Reiniciar todo:    docker compose restart
-echo    Reconstru Reconstruir:       docker compose up -d --build
+echo    Reconstruir todo:
+echo    docker compose down -v ^&^& docker compose up -d --build
 echo.
 echo ================================================
 echo.
-ir:       docker compose up -d --build
-echo.
-echo ================================================
-echo.
-pause
+echo Presiona cualquier tecla para salir...
+pause >nul
