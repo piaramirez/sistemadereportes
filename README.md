@@ -137,3 +137,4 @@ coordinator (El coordinador o "encargado" que mencionas, el cual mapeamos como i
 technician (Técnico de mantenimiento asignado a las reparaciones)
 
 inspector (El inspector en plantel que levanta los reportes iniciales)
+"Unam26!#" 

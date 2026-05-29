@@ -45,16 +45,14 @@ export default function DashboardPage() {
             .get(`${API_URL}/api/reports`, { headers })
             .catch(() => ({ data: [] })),
         ]);
-
         if (statsRes.data) setStats(statsRes.data);
         if (reportsRes.data) setReports(reportsRes.data);
       } catch (error) {
-        console.error("Error al obtener los datos:", error);
+        console.error("Error al cargar datos:", error);
       } finally {
         setLoading(false);
       }
     };
-
     fetchData();
   }, [router]);
 
@@ -64,18 +62,14 @@ export default function DashboardPage() {
     window.location.href = "/login";
   };
 
-  if (loading || !user) {
+  if (loading || !user)
     return (
-      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center text-white font-sans gap-4">
-        <div className="w-12 h-12 border-4 border-[#CDB170] border-t-transparent rounded-full animate-spin"></div>
-        <p className="text-sm font-bold tracking-wider animate-pulse text-slate-300">
-          Verificando credenciales...
-        </p>
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white">
+        Verificando...
       </div>
     );
-  }
 
-  const userRole = user.role ? user.role.toLowerCase() : "";
+  const userRole = user.role?.toLowerCase() || "";
   const isAdmin = userRole === "admin";
   const isEncargado = userRole === "coordinator";
   const isEmpleado = userRole === "technician" || userRole === "inspector";
@@ -84,60 +78,50 @@ export default function DashboardPage() {
     <div className="flex h-screen overflow-hidden bg-slate-50 font-sans">
       <aside className="w-64 flex-shrink-0 hidden lg:flex flex-col border-r border-slate-200 bg-white">
         <div className="p-5 flex items-center gap-3 border-b border-slate-100">
-          <div className="bg-[#002B7A] p-2 rounded-xl flex items-center justify-center shadow-md">
-            <span className="material-symbols-outlined text-white text-xl">
-              domain
-            </span>
+          <div className="bg-[#002B7A] p-2 rounded-xl text-white">
+            <span className="material-symbols-outlined">domain</span>
           </div>
           <div>
-            <h1 className="font-bold text-lg tracking-tight text-[#002B7A]">
-              EduInspect
-            </h1>
-            <p className="text-[10px] text-[#CDB170] font-bold uppercase tracking-wider">
+            <h1 className="font-bold text-lg text-[#002B7A]">EduInspect</h1>
+            <p className="text-[10px] text-[#CDB170] font-bold uppercase">
               FES Aragón UNAM
             </p>
           </div>
         </div>
 
         <nav className="flex-1 px-4 py-6 space-y-1">
-          <a
-            className="flex items-center gap-3 px-4 py-2.5 text-[#002B7A] bg-[#F1E9D7] rounded-xl font-bold transition-all"
-            href="#"
-          >
+          <button className="flex items-center gap-3 w-full px-4 py-2.5 text-[#002B7A] bg-[#F1E9D7] rounded-xl font-bold">
             <span className="material-symbols-outlined">dashboard</span> Panel
             Principal
-          </a>
-
+          </button>
           <button
             onClick={() => router.push("/dashboard/reports")}
-            className="flex items-center gap-3 w-full px-4 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl font-medium transition-colors text-left cursor-pointer"
+            className="flex items-center gap-3 w-full px-4 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl font-medium text-left"
           >
             <span className="material-symbols-outlined">description</span>{" "}
             Reportes
           </button>
-
           <button
-            onClick={() => alert("Módulo de Mensajes en desarrollo...")}
-            className="flex items-center gap-3 w-full px-4 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl font-medium transition-colors text-left cursor-pointer"
+            onClick={() => alert("Módulo en desarrollo")}
+            className="flex items-center gap-3 w-full px-4 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl font-medium text-left"
           >
             <span className="material-symbols-outlined">forum</span> Mensajes
           </button>
-
           {(isAdmin || isEncargado) && (
-            <a
-              className="flex items-center gap-3 px-4 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl font-medium transition-colors"
-              href="#"
+            <button
+              onClick={() => router.push("/dashboard/staff")}
+              className="flex items-center gap-3 w-full px-4 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl font-medium text-left"
             >
               <span className="material-symbols-outlined">group</span> Gestionar
               Personal
-            </a>
+            </button>
           )}
         </nav>
 
         <div className="p-4 border-t border-slate-100">
           <button
             onClick={handleLogout}
-            className="flex items-center gap-3 w-full px-4 py-2.5 text-red-600 hover:bg-red-50 rounded-xl font-semibold transition-colors"
+            className="flex items-center gap-3 w-full px-4 py-2.5 text-red-600 hover:bg-red-50 rounded-xl font-semibold"
           >
             <span className="material-symbols-outlined">logout</span> Cerrar
             Sesión
@@ -146,51 +130,43 @@ export default function DashboardPage() {
       </aside>
 
       <main className="flex-1 overflow-y-auto flex flex-col">
-        <header className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-slate-200 px-8 py-4 flex items-center justify-between">
-          <div>
-            <h2 className="text-2xl font-bold text-slate-800">
-              Panel de Control ({user.role})
-            </h2>
-          </div>
-          <div className="flex items-center gap-3 border-l pl-4 border-slate-200">
-            <div className="text-right hidden sm:block">
-              <p className="text-sm font-bold text-slate-800">{user.name}</p>
-              <p className="text-xs font-semibold text-[#CDB170] uppercase tracking-wider">
-                {user.role}
-              </p>
-            </div>
-            <div className="w-10 h-10 rounded-full bg-[#002B7A] text-white font-bold flex items-center justify-center text-sm border-2 border-[#CDB170]">
-              {user.initials || "U"}
-            </div>
+        <header className="sticky top-0 bg-white/80 backdrop-blur-md border-b border-slate-200 px-8 py-4 flex items-center justify-between">
+          <h2 className="text-2xl font-bold text-slate-800">
+            Panel de Control ({user.role})
+          </h2>
+          <div className="text-right">
+            <p className="text-sm font-bold text-slate-800">{user.name}</p>
+            <p className="text-xs font-semibold text-[#CDB170] uppercase">
+              {user.role}
+            </p>
           </div>
         </header>
 
-        <div className="p-8 space-y-8 flex-1">
+        <div className="p-8 space-y-8">
           {!isEmpleado && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+              <div className="bg-white p-6 rounded-2xl border shadow-sm">
                 <p className="text-sm font-semibold text-slate-500">
                   Total de Reportes
                 </p>
-                <h3 className="text-3xl font-black text-slate-800 mt-1">
-                  {stats.total_reports || reports.length}
+                <h3 className="text-3xl font-black text-slate-800">
+                  {stats.total_reports}
                 </h3>
               </div>
-              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+              <div className="bg-white p-6 rounded-2xl border shadow-sm">
                 <p className="text-sm font-semibold text-slate-500">
                   Pendientes
                 </p>
-                <h3 className="text-3xl font-black text-amber-600 mt-1">
-                  {stats.pending ||
-                    reports.filter((r) => r.status === "pending").length}
+                <h3 className="text-3xl font-black text-amber-600">
+                  {stats.pending}
                 </h3>
               </div>
-              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+              <div className="bg-white p-6 rounded-2xl border shadow-sm">
                 <p className="text-sm font-semibold text-slate-500">
                   Atendidos (7 días)
                 </p>
-                <h3 className="text-3xl font-black text-emerald-600 mt-1">
-                  {stats.completed_last_7_days || 0}
+                <h3 className="text-3xl font-black text-emerald-600">
+                  {stats.completed_last_7_days}
                 </h3>
               </div>
             </div>
@@ -199,16 +175,13 @@ export default function DashboardPage() {
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
             <div className="p-5 border-b border-slate-200 flex items-center justify-between bg-slate-50/50">
               <h3 className="font-bold text-slate-800 text-lg">
-                Listado de Reportes
+                Listado de Reportes de Incidencias
               </h3>
               <button
                 onClick={() => router.push("/dashboard/reports")}
-                className="bg-[#002B7A] text-white px-4 py-2 rounded-xl font-bold text-sm flex items-center gap-2 hover:bg-[#001F5C] transition-colors"
+                className="bg-[#002B7A] text-white px-4 py-2 rounded-xl font-bold text-sm hover:bg-[#001F5C] transition-colors"
               >
-                <span className="material-symbols-outlined text-[18px]">
-                  add
-                </span>
-                Nuevo Reporte
+                Crear Reporte
               </button>
             </div>
             <div className="overflow-x-auto">
@@ -216,16 +189,16 @@ export default function DashboardPage() {
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-200">
                     <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">
-                      Reporte
+                      REPORTE
                     </th>
                     <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">
-                      Ubicación
+                      UBICACIÓN
                     </th>
                     <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">
-                      Estado
+                      ESTADO
                     </th>
                     <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase text-right">
-                      Acciones
+                      ACCIONES
                     </th>
                   </tr>
                 </thead>
@@ -236,7 +209,7 @@ export default function DashboardPage() {
                         {report.report_number}
                       </td>
                       <td className="px-6 py-4 text-sm text-slate-700">
-                        {report.location?.name || "Sin asignar"}
+                        {report.location}
                       </td>
                       <td className="px-6 py-4">
                         <span

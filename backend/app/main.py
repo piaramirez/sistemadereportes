@@ -606,3 +606,26 @@ async def create_report(
         if isinstance(e, HTTPException): raise e
         raise HTTPException(status_code=500, detail="Error relacional interno")
     
+# --- MÓDULO GESTIÓN DE PERSONAL ---
+
+@app.get("/api/users/{user_id}")
+async def get_user_detail(user_id: str, token: str = Depends(oauth2_scheme)):
+    user = await db.user.find_unique(where={"id": user_id}, include={"assignments": {"include": {"report": True}}})
+    if not user: raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    return {
+        "id": user.id, "name": user.name, "email": user.email, "role": user.role,
+        "avatar_url": user.avatar_url, "assignments": user.assignments
+    }
+
+@app.post("/api/users/{user_id}/reset-password")
+async def reset_password(user_id: str, token: str = Depends(oauth2_scheme)):
+    # Restablecer a: Unam26!#
+    hashed = pwd_context.hash("Unam26!#")
+    await db.user.update(where={"id": user_id}, data={"password_hash": hashed})
+    return {"message": "Contraseña restablecida"}
+
+@app.delete("/api/users/{user_id}")
+async def delete_user(user_id: str, token: str = Depends(oauth2_scheme)):
+    await db.assignment.delete_many(where={"technician_id": user_id})
+    await db.user.delete(where={"id": user_id})
+    return {"message": "Usuario eliminado"}
