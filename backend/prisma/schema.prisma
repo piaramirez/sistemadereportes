@@ -1,0 +1,151 @@
+// backend/prisma/schema.prisma
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider             = "prisma-client-py"
+  interface            = "asyncio"
+  recursive_type_depth = 5
+}
+
+model User {
+  id            String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name          String         @db.VarChar(100)
+  email         String         @unique @db.VarChar(255)
+  password_hash String         @db.VarChar(255)
+  role          String         @db.VarChar(20) // 'admin', 'coordinator', 'technician', 'inspector'
+  avatar_url    String?        @db.Text
+  is_active     Boolean?       @default(true)
+  created_at    DateTime?      @default(now()) @db.Timestamp(6)
+  updated_at    DateTime?      @default(now()) @db.Timestamp(6)
+  
+  reports       Report[]       @relation("Reporter")
+  assignments   Assignment[]   @relation("Technician")
+  created_assign Assignment[]  @relation("Assigner")
+  notifications Notification[]
+  history       ReportHistory[]
+
+  @@map("users")
+}
+
+model Building {
+  id          Int        @id @default(autoincrement())
+  name        String     @db.VarChar(100)
+  description String?    @db.Text
+  created_at  DateTime?  @default(now()) @db.Timestamp(6)
+  locations   Location[]
+
+  @@map("buildings")
+}
+
+model Location {
+  id            Int       @id @default(autoincrement())
+  building_id   Int
+  name          String    @db.VarChar(100)
+  location_type String    @db.VarChar(50) // 'classroom', 'bathroom', 'common_area', 'lab', 'office'
+  floor         Int?
+  code          String?   @unique @db.VarChar(50)
+  created_at    DateTime? @default(now()) @db.Timestamp(6)
+
+  building      Building  @relation(fields: [building_id], references: [id], onDelete: Cascade)
+  reports       Report[]
+
+  @@map("locations")
+}
+
+model Report {
+  id              Int             @id @default(autoincrement())
+  report_number   String          @unique @db.VarChar(20)
+  reporter_id     String?         @db.Uuid
+  location_id     Int
+  report_date     DateTime        @db.Date
+  inspection_date DateTime        @db.Date
+  comments        String?         @db.Text
+  status          String?         @default("pending") @db.VarChar(20) // 'pending', 'assigned', 'in_progress', 'completed', 'cancelled'
+  created_at      DateTime?       @default(now()) @db.Timestamp(6)
+  updated_at      DateTime?       @default(now()) @db.Timestamp(6)
+
+  reporter        User?           @relation("Reporter", fields: [reporter_id], references: [id], onDelete: SetNull)
+  location        Location        @relation(fields: [location_id], references: [id])
+  evaluations     Evaluation[]
+  images          Image[]
+  assignments     Assignment[]
+  notifications   Notification[]
+  history         ReportHistory[]
+
+  @@map("reports")
+}
+
+model Evaluation {
+  id            Int       @id @default(autoincrement())
+  report_id     Int
+  criteria_name String    @db.VarChar(100)
+  rating        Int?
+  created_at    DateTime? @default(now()) @db.Timestamp(6)
+
+  report        Report    @relation(fields: [report_id], references: [id], onDelete: Cascade)
+
+  @@map("evaluations")
+}
+
+model Image {
+  id          Int       @id @default(autoincrement())
+  report_id   Int
+  url         String    @db.Text
+  caption     String?   @db.VarChar(255)
+  uploaded_at DateTime? @default(now()) @db.Timestamp(6)
+
+  report      Report    @relation(fields: [report_id], references: [id], onDelete: Cascade)
+
+  @@map("images")
+}
+
+model Assignment {
+  id               Int       @id @default(autoincrement())
+  report_id        Int
+  technician_id    String?   @db.Uuid
+  assigned_by      String?   @db.Uuid
+  assigned_at      DateTime? @default(now()) @db.Timestamp(6)
+  completed_at     DateTime? @db.Timestamp(6)
+  resolution_notes String?   @db.Text
+  status           String?   @default("assigned") @db.VarChar(20) // 'assigned', 'accepted', 'in_progress', 'completed', 'rejected'
+
+  report           Report    @relation(fields: [report_id], references: [id], onDelete: Cascade)
+  technician       User?     @relation("Technician", fields: [technician_id], references: [id])
+  assigner         User?     @relation("Assigner", fields: [assigned_by], references: [id])
+
+  @@map("assignments")
+}
+
+model Notification {
+  id         Int       @id @default(autoincrement())
+  user_id    String    @db.Uuid
+  report_id  Int
+  type       String    @db.VarChar(50) // 'assignment', 'status_change', 'comment', 'due_date'
+  message    String    @db.Text
+  is_read    Boolean?  @default(false)
+  created_at DateTime? @default(now()) @db.Timestamp(6)
+
+  user       User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  report     Report    @relation(fields: [report_id], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+model ReportHistory {
+  id         Int       @id @default(autoincrement())
+  report_id  Int
+  user_id    String    @db.Uuid
+  action     String    @db.VarChar(50)
+  old_value  String?   @db.Text
+  new_value  String?   @db.Text
+  created_at DateTime? @default(now()) @db.Timestamp(6)
+
+  report     Report    @relation(fields: [report_id], references: [id], onDelete: Cascade)
+  user       User      @relation(fields: [user_id], references: [id])
+
+  @@map("report_history")
+}

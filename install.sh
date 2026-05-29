@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # =============================================
-# EDUINSPECT - INSTALADOR AUTOMÁTICO
+# EDUINSPECT - INSTALADOR DEFINITIVO REAL
 # Ejecutar: ./install.sh
 # =============================================
 
@@ -12,173 +12,222 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 echo -e "${BLUE}================================================${NC}"
-echo -e "${BLUE}   EDUINSPECT - INSTALANDO TODO${NC}"
+echo -e "${BLUE}   EDUINSPECT - INSTALACIÓN CON MODELO REAL${NC}"
 echo -e "${BLUE}================================================${NC}"
 echo ""
 
-# =============================================
-# 1. VERIFICAR REQUISITOS DEL SISTEMA
-# =============================================
-echo -e "${YELLOW}[1/6] Verificando requisitos...${NC}"
-
-# Verificar Python
-if ! command -v python3 &> /dev/null; then
-    echo -e "${RED}❌ Python3 no está instalado${NC}"
-    echo "Instalar con: sudo dnf install python3.11 python3.11-pip -y"
-    exit 1
-fi
-echo -e "${GREEN}✅ Python3: $(python3 --version)${NC}"
-
-# Verificar pip
-if ! command -v pip3 &> /dev/null; then
-    echo -e "${RED}❌ pip3 no está instalado${NC}"
-    exit 1
-fi
-echo -e "${GREEN}✅ pip3: $(pip3 --version)${NC}"
-
-# Verificar Node.js
-if ! command -v node &> /dev/null; then
-    echo -e "${RED}❌ Node.js no está instalado${NC}"
-    echo "Instalar con: curl -fsSL https://rpm.nodesource.com/setup_18.x | sudo bash - && sudo dnf install nodejs -y"
-    exit 1
-fi
-echo -e "${GREEN}✅ Node.js: $(node --version)${NC}"
-
-# Verificar npm
-if ! command -v npm &> /dev/null; then
-    echo -e "${RED}❌ npm no está instalado${NC}"
-    exit 1
-fi
-echo -e "${GREEN}✅ npm: $(npm --version)${NC}"
-
-# Verificar Docker
+# 1. Verificar Docker
+echo -e "${YELLOW}[1/5] Verificando Docker...${NC}"
 if ! command -v docker &> /dev/null; then
     echo -e "${RED}❌ Docker no está instalado${NC}"
-    echo "Instalar con: sudo dnf install docker-ce docker-ce-cli containerd.io docker-compose-plugin -y"
     exit 1
 fi
-echo -e "${GREEN}✅ Docker: $(docker --version)${NC}"
+echo -e "${GREEN}✅ Docker instalado${NC}"
 echo ""
 
-# =============================================
-# 2. INSTALAR DEPENDENCIAS BACKEND (Python)
-# =============================================
-echo -e "${YELLOW}[2/6] Instalando dependencias de backend...${NC}"
-cd backend
-
-# Crear entorno virtual si no existe
-if [ ! -d "venv" ]; then
-    python3 -m venv venv
-    echo -e "${GREEN}✅ Entorno virtual creado${NC}"
-fi
-
-# Activar entorno virtual
-source venv/bin/activate
-
-# Actualizar pip
-pip install --upgrade pip
-
-# Instalar dependencias
-pip install fastapi uvicorn python-dotenv prisma python-jose[cryptography] passlib[bcrypt] python-multipart pydantic[email] sendgrid reportlab openpyxl httpx Pillow
-
-# Guardar dependencias en requirements.txt
-pip freeze > requirements.txt
-
-cd ..
-echo -e "${GREEN}✅ Backend listo${NC}"
-echo ""
-
-# =============================================
-# 3. INSTALAR DEPENDENCIAS FRONTEND (Next.js)
-# =============================================
-echo -e "${YELLOW}[3/6] Instalando dependencias de frontend...${NC}"
-cd frontend
-
-# Verificar si es un proyecto Next.js
-if [ ! -f "package.json" ]; then
-    echo -e "${YELLOW}⚠️ Creando nuevo proyecto Next.js...${NC}"
-    npx create-next-app@latest . --typescript --tailwind --eslint --app --use-npm --yes
-fi
-
-# Instalar dependencias
-npm install axios jwt-decode react-hook-form @tanstack/react-query date-fns recharts lucide-react
-
-cd ..
-echo -e "${GREEN}✅ Frontend listo${NC}"
-echo ""
-
-# =============================================
-# 4. LEVANTAR BASE DE DATOS (Docker)
-# =============================================
-echo -e "${YELLOW}[4/6] Levantando base de datos con Docker...${NC}"
-
-# Verificar si docker-compose.yml existe
-if [ ! -f "docker-compose.yml" ]; then
-    echo -e "${RED}❌ No existe docker-compose.yml${NC}"
+# 2. Verificar Docker Compose
+echo -e "${YELLOW}[2/5] Verificando Docker Compose...${NC}"
+if ! command -v docker compose &> /dev/null; then
+    echo -e "${RED}❌ Docker Compose no está instalado${NC}"
     exit 1
 fi
-
-# Levantar contenedores
-docker compose up -d
-
-# Esperar a que PostgreSQL esté listo
-sleep 5
-
-echo -e "${GREEN}✅ Base de datos corriendo${NC}"
+echo -e "${GREEN}✅ Docker Compose instalado${NC}"
 echo ""
 
-# =============================================
-# 5. EJECUTAR SCHEMA DE BASE DE DATOS
-# =============================================
-echo -e "${YELLOW}[5/6] Ejecutando schema.sql...${NC}"
-
-# Verificar que el contenedor existe
-if docker ps | grep -q "edusync_postgres"; then
-    docker exec -i edusync_postgres psql -U postgres -d edusync < schema.sql
-    echo -e "${GREEN}✅ Schema ejecutado${NC}"
-else
-    echo -e "${RED}⚠️ Contenedor no encontrado, ejecutar manualmente:${NC}"
-    echo "docker exec -i sistemsync_postgres psql -U postgres -d edusync < schema.sql"
-fi
+# 3. Crear estructura de carpetas obligatorias
+echo -e "${YELLOW}[3/5] Creando estructura de carpetas...${NC}"
+mkdir -p backend/app backend/prisma frontend/app/login frontend/app/dashboard frontend/public scripts
+echo -e "${GREEN}✅ Carpetas creadas o ya existentes${NC}"
 echo ""
 
-# =============================================
-# 6. CONFIGURACIÓN FINAL
-# =============================================
-echo -e "${YELLOW}[6/6] Configurando variables de entorno...${NC}"
+# 4. Validar e inyectar archivos críticos de Prisma y Entorno
+echo -e "${YELLOW}[4/5] Generando schema.prisma relacional...${NC}"
 
-# Crear .env para backend
-cat > backend/.env << 'EOF'
-DATABASE_URL="postgresql://postgres:postgres@localhost:5433/edusync"
-SECRET_KEY="mi-super-secreto-cambiame-en-produccion"
-ALGORITHM="HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES=30
+# Crear schema.prisma basado fielmente en tu init.sql
+# Crear schema.prisma basado fielmente en tu init.sql con @@map correctos
+if [ ! -f "backend/prisma/schema.prisma" ]; then
+    cat << EOF > backend/prisma/schema.prisma
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider             = "prisma-client-py"
+  recursive_type_depth = 5
+}
+
+model User {
+  id            String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name          String         @db.VarChar(100)
+  email         String         @unique @db.VarChar(255)
+  password_hash String         @db.VarChar(255)
+  role          String         @db.VarChar(20)
+  avatar_url    String?        @db.Text
+  is_active     Boolean        @default(true)
+  created_at    DateTime       @default(now()) @db.Timestamp
+  updated_at    DateTime       @default(now()) @db.Timestamp
+  
+  reports       Report[]       @relation("Reporter")
+  assignments   Assignment[]   @relation("Technician")
+  assignedBy    Assignment[]   @relation("AssignedBy")
+  notifications Notification[]
+  history       ReportHistory[]
+
+  @@map("users")
+}
+
+model Building {
+  id          Int        @id @default(autoincrement())
+  name        String     @db.VarChar(100)
+  description String?    @db.Text
+  created_at  DateTime   @default(now()) @db.Timestamp
+  locations   Location[]
+
+  @@map("buildings")
+}
+
+model Location {
+  id            Int      @id @default(autoincrement())
+  building_id   Int
+  name          String   @db.VarChar(100)
+  location_type String   @db.VarChar(50)
+  floor         Int?
+  code          String?  @unique @db.VarChar(50)
+  created_at    DateTime @default(now()) @db.Timestamp
+  
+  building      Building @relation(fields: [building_id], references: [id], onDelete: Cascade)
+  reports       Report[]
+
+  @@map("locations")
+}
+
+model Report {
+  id              Int             @id @default(autoincrement())
+  report_number   String          @unique @db.VarChar(20)
+  reporter_id     String?         @db.Uuid
+  location_id     Int
+  report_date     DateTime        @db.Date
+  inspection_date DateTime        @db.Date
+  comments        String?         @db.Text
+  status          String          @default("pending") @db.VarChar(20)
+  created_at      DateTime        @default(now()) @db.Timestamp
+  updated_at      DateTime        @default(now()) @db.Timestamp
+
+  reporter        User?           @relation("Reporter", fields: [reporter_id], references: [id], onDelete: SetNull)
+  location        Location        @relation(fields: [location_id], references: [id])
+  evaluations     Evaluation[]
+  images          Image[]
+  assignments     Assignment[]
+  notifications   Notification[]
+  history         ReportHistory[]
+
+  @@map("reports")
+}
+
+model Evaluation {
+  id            Int      @id @default(autoincrement())
+  report_id     Int
+  criteria_name String   @db.VarChar(100)
+  rating        Int
+  created_at    DateTime @default(now()) @db.Timestamp
+
+  report        Report   @relation(fields: [report_id], references: [id], onDelete: Cascade)
+
+  @@map("evaluations")
+}
+
+model Image {
+  id          Int      @id @default(autoincrement())
+  report_id   Int
+  url         String   @db.Text
+  caption     String?  @db.VarChar(255)
+  uploaded_at DateTime @default(now()) @db.Timestamp
+
+  report      Report   @relation(fields: [report_id], references: [id], onDelete: Cascade)
+
+  @@map("images")
+}
+
+model Assignment {
+  id               Int       @id @default(autoincrement())
+  report_id        Int
+  technician_id    String?   @db.Uuid
+  assigned_by      String?   @db.Uuid
+  assigned_at      DateTime  @default(now()) @db.Timestamp
+  completed_at     DateTime? @db.Timestamp
+  resolution_notes String?   @db.Text
+  status           String    @default("assigned") @db.VarChar(20)
+
+  report           Report    @relation(fields: [report_id], references: [id], onDelete: Cascade)
+  technician       User?     @relation("Technician", fields: [technician_id], references: [id])
+  assignedBy       User?     @relation("AssignedBy", fields: [assigned_by], references: [id])
+
+  @@map("assignments")
+}
+
+model Notification {
+  id         Int      @id @default(autoincrement())
+  user_id    String   @db.Uuid
+  report_id  Int
+  type       String   @db.VarChar(50)
+  message    String   @db.Text
+  is_read    Boolean  @default(false)
+  created_at DateTime @default(now()) @db.Timestamp
+
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  report     Report   @relation(fields: [report_id], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+model ReportHistory {
+  id         Int      @id @default(autoincrement())
+  report_id  Int
+  user_id    String?  @db.Uuid
+  action     String   @db.VarChar(50)
+  old_value  String?  @db.Text
+  new_value  String?  @db.Text
+  created_at DateTime @default(now()) @db.Timestamp
+
+  report     Report   @relation(fields: [report_id], references: [id], onDelete: Cascade)
+  user       User?    @relation(fields: [user_id], references: [id])
+
+  @@map("report_history")
+}
 EOF
+    echo -e "${GREEN}✅ Archivo backend/prisma/schema.prisma recreado con mapeos (@@map) correctos.${NC}"
+fi
 
-echo -e "${GREEN}✅ Variables de entorno creadas${NC}"
+# Configurar archivo .env de backend por defecto si no existe
+if [ ! -f "backend/.env" ]; then
+    cat << EOF > backend/.env
+DATABASE_URL="postgresql://postgres:postgres@db:5432/eduinspect_db?schema=public"
+EOF
+    echo -e "${GREEN}✅ Archivo backend/.env configurado.${NC}"
+fi
 echo ""
 
-# =============================================
-# MENSAJE FINAL
-# =============================================
+# 5. Construir y levantar contenedores
+echo -e "${YELLOW}[5/5] Levantando contenedores en Docker...${NC}"
+docker compose down --remove-orphans &> /dev/null
+docker compose up -d --build
+
+if [ $? -ne 0 ]; then
+    echo -e "${RED}❌ Error crítico al levantar los contenedores.${NC}"
+    exit 1
+fi
+echo -e "${GREEN}✅ Contenedores levantados exitosamente${NC}"
+echo ""
+
+echo -e "${YELLOW}⏳ Esperando 10 segundos a que los servicios y la BD se sincronicen...${NC}"
+sleep 10
+
 echo -e "${GREEN}================================================${NC}"
 echo -e "${GREEN}✅ INSTALACIÓN COMPLETADA CON ÉXITO${NC}"
 echo -e "${GREEN}================================================${NC}"
 echo ""
-echo -e "${YELLOW}📌 Para iniciar el proyecto:${NC}"
-echo ""
-echo -e "  ${BLUE}Terminal 1 - Backend:${NC}"
-echo "    cd backend"
-echo "    source venv/bin/activate"
-echo "    uvicorn app.main:app --reload --port 8000"
-echo ""
-echo -e "  ${BLUE}Terminal 2 - Frontend:${NC}"
-echo "    cd frontend"
-echo "    npm run dev"
-echo ""
-echo -e "  ${BLUE}Acceder:${NC}"
-echo "    http://localhost:3000/login"
-echo ""
-echo -e "  ${BLUE}Credenciales de prueba:${NC}"
-echo "    admin@edusync.com / admin123"
+echo -e "${YELLOW}📌 Accesos del Proyecto:${NC}"
+echo "   Frontend (Next.js): http://localhost:3000/login"
+echo "   Backend (FastAPI):  http://localhost:8000/docs"
 echo ""
