@@ -703,3 +703,210 @@ async def delete_user(user_id: str, token: str = Depends(oauth2_scheme)):
     await db.assignment.delete_many(where={"technician_id": user_id})
     await db.user.delete(where={"id": user_id})
     return {"message": "Usuario eliminado"}
+
+
+# ====================================================
+# MÓDULO DE MENSAJES / NOTIFICACIONES
+# Basado en tablas: notifications, report_history
+# ====================================================
+
+@app.get("/api/notifications")
+async def get_notifications(token: str = Depends(oauth2_scheme)):
+    """Obtener todas las notificaciones del usuario actual"""
+    try:
+        user_data = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        current_user = await db.user.find_unique(where={"email": user_data.get("sub")})
+        
+        if not current_user:
+            raise HTTPException(status_code=404, detail="Usuario no encontrado")
+        
+        notifications = await db.notification.find_many(
+            where={"user_id": current_user.id},
+            order={"created_at": "desc"},
+            include={"report": True}
+        )
+        
+        return [
+            {
+                "id": n.id,
+                "user_id": str(n.user_id),
+                "report_id": n.report_id,
+                "type": n.type,
+                "message": n.message,
+                "is_read": n.is_read,
+                "created_at": n.created_at,
+                "report": {
+                    "id": n.report.id,
+                    "report_number": n.report.report_number,
+                    "status": n.report.status
+                } if n.report else None
+            }
+            for n in notifications
+        ]
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Token inválido")
+    except Exception as e:
+        print(f"Error en get_notifications: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.patch("/api/notifications/{notification_id}/read")
+async def mark_notification_read(notification_id: int, token: str = Depends(oauth2_scheme)):
+    """Marcar una notificación específica como leída"""
+    try:
+        user_data = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        current_user = await db.user.find_unique(where={"email": user_data.get("sub")})
+        
+        if not current_user:
+            raise HTTPException(status_code=404, detail="Usuario no encontrado")
+        
+        await db.notification.update(
+            where={"id": notification_id, "user_id": current_user.id},
+            data={"is_read": True}
+        )
+        return {"message": "Notificación marcada como leída"}
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Token inválido")
+    except Exception as e:
+        print(f"Error en mark_notification_read: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/notifications/mark-all-read")
+async def mark_all_notifications_read(token: str = Depends(oauth2_scheme)):
+    """Marcar todas las notificaciones del usuario como leídas"""
+    try:
+        user_data = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        current_user = await db.user.find_unique(where={"email": user_data.get("sub")})
+        
+        if not current_user:
+            raise HTTPException(status_code=404, detail="Usuario no encontrado")
+        
+        await db.notification.update_many(
+            where={"user_id": current_user.id, "is_read": False},
+            data={"is_read": True}
+        )
+        return {"message": "Todas las notificaciones marcadas como leídas"}
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Token inválido")
+    except Exception as e:
+        print(f"Error en mark_all_notifications_read: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/comments")
+async def get_all_comments(token: str = Depends(oauth2_scheme)):
+    """Obtener todos los comentarios (de report_history con action='comment')"""
+    try:
+        user_data = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        current_user = await db.user.find_unique(where={"email": user_data.get("sub")})
+        
+        if not current_user:
+            raise HTTPException(status_code=404, detail="Usuario no encontrado")
+        
+        # Obtener todos los comentarios
+        comments = await db.reporthistory.find_many(
+            where={"action": "comment"},
+            order={"created_at": "desc"},
+            include={"user": True, "report": True}
+        )
+        
+        # Filtrar por permisos si no es admin/coordinator
+        if current_user.role not in ["admin", "coordinator"]:
+            # Reportes donde el usuario es reporter
+            my_reports = await db.report.find_many(
+                where={"reporter_id": current_user.id},
+                select={"id": True}
+            )
+            my_report_ids = [r.id for r in my_reports]
+            
+            # Reportes donde el usuario es técnico asignado
+            my_assignments = await db.assignment.find_many(
+                where={"technician_id": current_user.id},
+                select={"report_id": True}
+            )
+            my_assigned_ids = [a.report_id for a in my_assignments]
+            
+            allowed_ids = set(my_report_ids + my_assigned_ids)
+            comments = [c for c in comments if c.report_id in allowed_ids]
+        
+        return [
+            {
+                "id": c.id,
+                "report_id": c.report_id,
+                "user_id": str(c.user_id) if c.user_id else None,
+                "comment": c.new_value,
+                "created_at": c.created_at,
+                "user": {
+                    "id": str(c.user.id),
+                    "name": c.user.name,
+                    "role": c.user.role,
+                    "avatar_url": c.user.avatar_url
+                } if c.user else None,
+                "report": {
+                    "id": c.report.id,
+                    "report_number": c.report.report_number,
+                    "status": c.report.status
+                } if c.report else None
+            }
+            for c in comments
+        ]
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Token inválido")
+    except Exception as e:
+        print(f"Error en get_all_comments: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/comments/report/{report_id}")
+async def get_report_comments(report_id: int, token: str = Depends(oauth2_scheme)):
+    """Obtener comentarios de un reporte específico"""
+    try:
+        user_data = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        current_user = await db.user.find_unique(where={"email": user_data.get("sub")})
+        
+        if not current_user:
+            raise HTTPException(status_code=404, detail="Usuario no encontrado")
+        
+        # Verificar acceso al reporte
+        report = await db.report.find_unique(
+            where={"id": report_id},
+            include={"assignments": True}
+        )
+        
+        if not report:
+            raise HTTPException(status_code=404, detail="Reporte no encontrado")
+        
+        has_access = (
+            current_user.role in ["admin", "coordinator"] or
+            report.reporter_id == current_user.id or
+            any(a.technician_id == current_user.id for a in report.assignments)
+        )
+        
+        if not has_access:
+            raise HTTPException(status_code=403, detail="No tienes acceso a este reporte")
+        
+        comments = await db.reporthistory.find_many(
+            where={"report_id": report_id, "action": "comment"},
+            order={"created_at": "asc"},
+            include={"user": True}
+        )
+        
+        return [
+            {
+                "id": c.id,
+                "user_id": str(c.user_id) if c.user_id else None,
+                "user_name": c.user.name if c.user else "Usuario",
+                "user_role": c.user.role if c.user else "unknown",
+                "comment": c.new_value,
+                "created_at": c.created_at
+            }
+            for c in comments
+        ]
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Token inválido")
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error en get_report_comments: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
