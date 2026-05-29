@@ -1,231 +1,180 @@
 #!/bin/bash
 # =============================================
-# ARCHIVO: install_mac.sh
-# AUTOR: Pedro Antonio Ramírez Alcántara
-# MATERIA: Vinculación Empresarial
-# GRUPO: 2007 (2026-II)
-# DOCENTE: Aarón Velasco Agustín
-# CARRERA: Ingeniería en Computación - FES Aragón
-# FUNCIÓN: Instalador automático de EduInspect para MAC
+# INSTALADOR EDUINSPECT - macOS/Linux
 # =============================================
 
-# Colores
+# Colores para output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-MAGENTA='\033[0;35m'
-CYAN='\033[0;36m'
-NC='\033[0m'
+NC='\033[0m' # No Color
 
-# Función para imprimir banners
-print_banner() {
-    clear
-    echo -e "${BLUE}================================================${NC}"
-    echo -e "${BLUE}   EDUINSPECT - INSTALACIÓN COMPLETA${NC}"
-    echo -e "${BLUE}   FES Aragón - UNAM${NC}"
-    echo -e "${BLUE}================================================${NC}"
-    echo ""
-}
-
-# Función para imprimir pasos
-print_step() {
-    echo -e "${CYAN}[$1/7] $2${NC}"
-}
-
-print_success() {
-    echo -e "${GREEN}✅ $1${NC}"
-}
-
-print_error() {
-    echo -e "${RED}❌ $1${NC}"
-}
-
-print_warning() {
-    echo -e "${YELLOW}⚠️ $1${NC}"
-}
-
-print_info() {
-    echo -e "${MAGENTA}ℹ️ $1${NC}"
-}
-
-# Verificar si el último comando fue exitoso
-check_error() {
-    if [ $? -ne 0 ]; then
-        print_error "$1"
-        exit 1
-    fi
-}
-
-# Verificar Homebrew
-check_homebrew() {
-    if ! command -v brew &> /dev/null; then
-        print_warning "Homebrew no instalado. Instalando..."
-        /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-    fi
-}
-
-# Inicio del script
-print_banner
-
-# =============================================
-# PASO 1: VERIFICAR HOMEBREW
-# =============================================
-print_step "1" "Verificando Homebrew..."
-check_homebrew
-print_success "Homebrew listo"
+clear
+echo "================================================"
+echo "   EDUINSPECT - INSTALACION COMPLETA"
+echo "   FES Aragon - UNAM"
+echo "================================================"
 echo ""
 
-# =============================================
-# PASO 2: VERIFICAR DOCKER
-# =============================================
-print_step "2" "Verificando Docker..."
+# ============================================
+# 1. VERIFICAR DOCKER
+# ============================================
+echo -e "${BLUE}[1/4] Verificando Docker...${NC}"
 
 if ! command -v docker &> /dev/null; then
-    print_error "Docker no está instalado"
-    print_info "Descarga Docker Desktop desde: https://docs.docker.com/desktop/install/mac/"
-    print_info "Luego ejecuta este script nuevamente"
+    echo -e "${RED}================================================${NC}"
+    echo -e "${RED}[ERROR] DOCKER NO ESTA INSTALADO${NC}"
+    echo -e "${RED}================================================${NC}"
+    echo ""
+    echo "Descarga Docker Desktop desde:"
+    echo "https://www.docker.com/products/docker-desktop/"
+    echo ""
+    echo "Instalalo y reinicia tu Mac"
+    echo ""
+    read -p "Presiona ENTER para salir..."
     exit 1
 fi
 
-# Verificar que Docker esté corriendo
-docker info &> /dev/null
-if [ $? -ne 0 ]; then
-    print_error "Docker no está corriendo"
-    print_info "Inicia Docker Desktop desde Aplicaciones"
+if ! docker info &> /dev/null; then
+    echo -e "${RED}================================================${NC}"
+    echo -e "${RED}[ERROR] DOCKER NO ESTA CORRIENDO${NC}"
+    echo -e "${RED}================================================${NC}"
+    echo ""
+    echo "1. Abre Docker Desktop desde Aplicaciones"
+    echo "2. Espera a que el icono del tray se ponga VERDE"
+    echo "3. Vuelve a ejecutar este instalador"
+    echo ""
+    read -p "Presiona ENTER para salir..."
     exit 1
 fi
 
-print_success "Docker instalado y corriendo"
+echo -e "${GREEN}[OK] Docker esta funcionando correctamente${NC}"
 echo ""
 
-# =============================================
-# PASO 3: VERIFICAR NODE.JS
-# =============================================
-print_step "3" "Verificando Node.js..."
+# ============================================
+# 2. CREAR .ENV
+# ============================================
+echo -e "${BLUE}[2/4] Creando archivo de configuracion...${NC}"
 
-if ! command -v node &> /dev/null; then
-    print_warning "Node.js no instalado, instalando con Homebrew..."
-    brew install node@20
-    brew link --overwrite node@20
-fi
-print_success "Node.js $(node --version) instalado"
-echo ""
-
-# =============================================
-# PASO 4: VERIFICAR PYTHON
-# =============================================
-print_step "4" "Verificando Python..."
-
-if ! command -v python3 &> /dev/null; then
-    print_warning "Python no instalado, instalando con Homebrew..."
-    brew install python@3.11
-fi
-print_success "Python $(python3 --version) instalado"
-echo ""
-
-# =============================================
-# PASO 5: CREAR ESTRUCTURA DE CARPETAS
-# =============================================
-print_step "5" "Creando estructura de carpetas..."
-
-# Backend
-mkdir -p backend/app/routers backend/app/utils backend/prisma backend/static/uploads
-
-# Frontend
-mkdir -p frontend/app/dashboard/reports/[id]/edit
-mkdir -p frontend/app/dashboard/reports/new
-mkdir -p frontend/app/dashboard/staff/[id]
-mkdir -p frontend/app/dashboard/messages
-mkdir -p frontend/app/login
-mkdir -p frontend/components
-mkdir -p frontend/lib
-mkdir -p frontend/config
-mkdir -p frontend/public/images
-mkdir -p frontend/hooks
-mkdir -p frontend/types
-
-# Scripts y database
-mkdir -p scripts database
-
-print_success "Estructura de carpetas creada"
-echo ""
-
-# =============================================
-# PASO 6: INSTALAR DEPENDENCIAS
-# =============================================
-print_step "6" "Instalando dependencias..."
-
-# Backend (Python)
-if [ -f "backend/requirements.txt" ]; then
-    print_info "Instalando dependencias de Python..."
-    pip3 install -r backend/requirements.txt
-    check_error "Error al instalar dependencias de Python"
-    print_success "Dependencias de Python instaladas"
+if [ ! -f ".env" ]; then
+    cat > .env << EOF
+DATABASE_URL="postgresql://postgres:postgres@postgres:5432/edusync"
+SECRET_KEY="mi-super-secreto-cambiame-en-produccion"
+ALGORITHM="HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+EOF
+    echo -e "${GREEN}[OK] Archivo .env creado${NC}"
 else
-    print_error "backend/requirements.txt no encontrado"
-fi
-
-# Frontend (Node.js)
-if [ -f "frontend/package.json" ]; then
-    print_info "Instalando dependencias de Node.js..."
-    cd frontend
-    npm install --legacy-peer-deps
-    check_error "Error al instalar dependencias de Node.js"
-    cd ..
-    print_success "Dependencias de Node.js instaladas"
-else
-    print_error "frontend/package.json no encontrado"
+    echo -e "${GREEN}[OK] Archivo .env ya existe${NC}"
 fi
 echo ""
 
-# =============================================
-# PASO 7: LEVANTAR CONTENEDORES DOCKER
-# =============================================
-print_step "7" "Levantando contenedores Docker..."
+# ============================================
+# 3. LIMPIAR CONTENEDORES VIEJOS
+# ============================================
+echo -e "${BLUE}[3/4] Limpiando instalaciones anteriores...${NC}"
 
-# Detener contenedores existentes
-docker compose down 2>/dev/null
+docker compose down -v 2>/dev/null
+docker system prune -f 2>/dev/null
 
-# Construir y levantar
-docker compose up -d --build
+echo -e "${GREEN}[OK] Limpieza completada${NC}"
+echo ""
 
+# ============================================
+# 4. CONSTRUIR Y LEVANTAR
+# ============================================
+echo -e "${BLUE}[4/4] Construyendo y levantando contenedores...${NC}"
+echo "================================================"
+echo "Esto tomara entre 3 y 5 minutos"
+echo "NO cierres esta ventana"
+echo "================================================"
+echo ""
+
+# Construir primero el backend
+echo -e "${YELLOW}Construyendo backend...${NC}"
+docker compose build backend --no-cache
 if [ $? -ne 0 ]; then
-    print_error "Error al levantar contenedores"
+    echo -e "${RED}[ERROR] Fallo la construccion del backend${NC}"
+    read -p "Presiona ENTER para salir..."
     exit 1
 fi
 
-print_success "Contenedores levantados exitosamente"
+# Construir el frontend
 echo ""
+echo -e "${YELLOW}Construyendo frontend...${NC}"
+docker compose build frontend --no-cache
+if [ $? -ne 0 ]; then
+    echo -e "${RED}[ERROR] Fallo la construccion del frontend${NC}"
+    read -p "Presiona ENTER para salir..."
+    exit 1
+fi
 
-# Esperar inicialización
-print_info "Esperando 15 segundos para inicialización..."
-sleep 15
+# Levantar todo
+echo ""
+echo -e "${YELLOW}Levantando contenedores...${NC}"
+docker compose up -d
+if [ $? -ne 0 ]; then
+    echo -e "${RED}[ERROR] Fallo al levantar los contenedores${NC}"
+    read -p "Presiona ENTER para salir..."
+    exit 1
+fi
 
-# =============================================
+# Esperar a que todo inicie
+echo ""
+echo "Esperando a que los servicios inicien..."
+sleep 10
+
+# Verificar que los contenedores estan corriendo
+echo ""
+echo "Verificando estado de contenedores..."
+docker ps --format "table {{.Names}}\t{{.Status}}"
+
+# Activar usuarios si existe la tabla
+echo ""
+echo "Activando usuarios en la base de datos..."
+docker exec edusync_postgres psql -U postgres -d edusync -c "UPDATE users SET is_active = true;" 2>/dev/null
+
+# ============================================
 # MENSAJE FINAL
-# =============================================
+# ============================================
 clear
-echo -e "${GREEN}================================================${NC}"
-echo -e "${GREEN}✅ INSTALACIÓN COMPLETADA CON ÉXITO${NC}"
-echo -e "${GREEN}================================================${NC}"
+echo "================================================"
+echo -e "${GREEN}   ¡INSTALACION COMPLETADA CON EXITO!${NC}"
+echo "================================================"
 echo ""
-echo -e "${YELLOW}📌 ACCESOS DEL PROYECTO:${NC}"
-echo "   Frontend (Next.js):    ${CYAN}http://localhost:3000${NC}"
-echo "   Login:                 ${CYAN}http://localhost:3000/login${NC}"
-echo "   Backend (FastAPI):     ${CYAN}http://localhost:8000${NC}"
-echo "   API Docs (Swagger):    ${CYAN}http://localhost:8000/docs${NC}"
+echo "🌐 ACCESOS:"
 echo ""
-echo -e "${YELLOW}🔑 CREDENCIALES DE PRUEBA:${NC}"
-echo "   Administrador: ${CYAN}pia@edusync.com / admin123${NC}"
-echo "   Coordinador:   ${CYAN}coordinador@edusync.com / Unam26!#${NC}"
-echo "   Técnico:       ${CYAN}tecnico@edusync.com / Unam26!#${NC}"
-echo "   Inspector:     ${CYAN}inspector@edusync.com / Unam26!#${NC}"
+echo "   Frontend: http://localhost:3000"
+echo "   Backend:  http://localhost:8000/docs"
+echo "   Base de datos: localhost:5433"
 echo ""
-echo -e "${YELLOW}📝 COMANDOS ÚTILES:${NC}"
-echo "   Ver logs:        ${CYAN}docker compose logs -f${NC}"
-echo "   Detener todo:    ${CYAN}docker compose down${NC}"
-echo "   Reiniciar todo:  ${CYAN}docker compose restart${NC}"
-echo "   Reconstruir:     ${CYAN}docker compose up -d --build${NC}"
+echo "🔑 CREDENCIALES DE PRUEBA:"
 echo ""
-echo -e "${GREEN}================================================${NC}"
+echo "   Administrador: pia@edusync.com / admin123"
+echo "   Coordinador:   coordinador@edusync.com / Unam26!#\""
+echo "   Tecnico:       tecnico@edusync.com / Unam26!#\""
+echo "   Inspector:     inspector@edusync.com / Unam26!#\""
+echo ""
+echo "================================================"
+echo "   COMANDOS UTILES"
+echo "================================================"
+echo ""
+echo "   Ver todos los logs:"
+echo "   docker compose logs -f"
+echo ""
+echo "   Ver solo el frontend:"
+echo "   docker compose logs frontend -f"
+echo ""
+echo "   Ver solo el backend:"
+echo "   docker compose logs backend -f"
+echo ""
+echo "   Detener todo:"
+echo "   docker compose down"
+echo ""
+echo "   Reconstruir todo:"
+echo "   docker compose down -v && docker compose up -d --build"
+echo ""
+echo "================================================"
+echo ""
+read -p "Presiona ENTER para salir..."
