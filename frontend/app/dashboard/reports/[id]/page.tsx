@@ -10,7 +10,7 @@
 
 "use client";
 
-import { useEffect, useState, use } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import apiClient from "@/lib/axios";
@@ -57,12 +57,11 @@ interface ReportDetail {
 
 export default function ReportDetailPage({
   params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+}: Readonly<{
+  params: { id: string };
+}>) {
   const router = useRouter();
-  const unwrappedParams = use(params);
-  const id = unwrappedParams.id;
+  const { id } = params; // ✅ CORREGIDO - Acceso directo, sin use()
 
   // ==========================================
   // ESTADOS
@@ -651,26 +650,3 @@ export default function ReportDetailPage({
     </div>
   );
 }
-
-// ==========================================
-// NOTAS PARA EL DESPLIEGUE:
-// ==========================================
-//
-// 1. ENDPOINTS UTILIZADOS:
-//    - GET /api/reports/{id} → Obtener detalle del reporte
-//    - PUT /api/reports/{id}/status → Actualizar estado
-//    - DELETE /api/reports/{id} → Eliminar reporte (solo admin)
-//    - POST /api/reports/{id}/comments → Agregar comentario
-//
-// 2. PERMISOS:
-//    - Admin: puede editar, eliminar, marcar atendido, comentar
-//    - Coordinator: puede editar, marcar atendido, comentar
-//    - Technician/Inspector: solo comentar y ver
-//
-// 3. FUNCIONALIDADES ESPECIALES:
-//    - Exportar PDF (usando window.print)
-//    - Optimistic updates en comentarios
-//    - Modal de confirmación para eliminar
-//    - Evaluaciones visuales (estrella/badge)
-//
-// ==========================================
